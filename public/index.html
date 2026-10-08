@@ -155,6 +155,17 @@
       </div>
     </section>
 
+    <section class="panel overview" id="overviewSection" hidden>
+      <details id="overviewDetails" open>
+        <summary data-i18n="ov.title">🌐 전체 현황 (SB)</summary>
+        <div id="ovTiles" class="tiles"></div>
+        <h3 class="admin-subhead" data-i18n="ov.list">그룹 목록</h3>
+        <ul id="ovGroups" class="ov-groups"></ul>
+        <h3 class="admin-subhead" data-i18n="ov.top">이번 달 전체 인기 가게</h3>
+        <ol id="ovTop" class="rank"></ol>
+      </details>
+    </section>
+
     <section class="panel admin" id="adminSection" hidden>
       <details id="adminDetails">
         <summary data-i18n="admin.title">🔧 가게 관리 (관리자)</summary>
@@ -201,16 +212,16 @@
       <h3 data-i18n="user.title">이름 등록</h3>
       <p class="muted small-text" data-i18n="user.desc"></p>
       <input id="userName" type="text" maxlength="20" autocomplete="nickname" data-i18n-placeholder="user.namePh" />
-      <div id="userAdmin" hidden>
-        <p class="muted small-text" data-i18n="user.adminDesc"></p>
-        <input id="userKey" type="password" autocomplete="off" data-i18n-placeholder="user.adminPh" />
-      </div>
+      <input id="userPassword" type="password" autocomplete="current-password" maxlength="64" data-i18n-placeholder="user.passwordPh" />
+      <p id="userAdmin" class="muted small-text" data-i18n="user.adminDesc" hidden></p>
+      <label class="check remember"><input type="checkbox" id="userRemember" checked /> <span data-i18n="user.remember">자동 로그인</span></label>
       <div id="userGroup" class="user-group" hidden>
         <p class="muted small-text" data-i18n="user.groupDesc"></p>
         <input id="userGroupName" type="text" maxlength="40" data-i18n-placeholder="user.groupPh" />
       </div>
       <p id="userError" class="error" hidden></p>
       <div class="dialog-actions">
+        <button id="userLogout" class="ghost danger" type="button" data-i18n="user.logout" hidden>로그아웃</button>
         <button id="userCancel" class="ghost" type="button" data-i18n="cancel" hidden>취소</button>
         <button id="userOk" class="primary" type="submit" data-i18n="user.save">시작하기</button>
       </div>

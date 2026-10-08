@@ -58,26 +58,28 @@ async function setup(opts = {}) {
   const placesFile = path.join(dir, 'restaurants.json');
   if (opts.places) fs.writeFileSync(placesFile, JSON.stringify(opts.places));
   const app = createApp({ store, adminKey: 'hs', defaultPlaceQuery: '더존을지타워', defaultOrigin: null, placesFile });
-  for (const name of TESTERS) store.state.users[userIdFor(name)] = { name, createdAt: '2026-01-01T00:00:00Z', lastSeenAt: '2026-01-01T00:00:00Z' };
   const server = await new Promise((resolve) => {
     const s = app.listen(0, () => resolve(s));
   });
   const base = `http://127.0.0.1:${server.address().port}`;
-  const call = async (method, p, body) => {
-    const res = await realFetch(base + p, {
-      method,
-      headers: body ? { 'Content-Type': 'application/json' } : undefined,
-      body: body ? JSON.stringify(body) : undefined,
-    });
+  // 테스트 편의: body.voterId가 테스트 계정 id면 그 계정의 로그인 세션으로 요청한다(서버는 세션으로만 사용자를 안다)
+  const sessions = {};
+  const call = async (method, p, body, headers = {}) => {
+    const h = { ...headers };
+    if (body) h['Content-Type'] = 'application/json';
+    if (body && sessions[body.voterId] && !h['x-session']) h['x-session'] = sessions[body.voterId];
+    const res = await realFetch(base + p, { method, headers: h, body: body ? JSON.stringify(body) : undefined });
     return { status: res.status, body: await res.json() };
   };
-  // 계정 등록(로그인) 후 id 반환
-  const login = async (name, key) => {
-    const r = await call('POST', '/api/users', { name, key });
+  // 가입/로그인 후 { id, token } 반환
+  const login = async (name, password = 'pw1234') => {
+    const r = await call('POST', '/api/auth/login', { name, password });
     if (r.status >= 400) return { error: r };
-    return r.body.user.id;
+    sessions[r.body.user.id] = r.body.token;
+    return { id: r.body.user.id, token: r.body.token, isNew: r.body.isNew };
   };
-  return { call, store, calls, placesFile, base, login, close: () => server.close() };
+  for (const name of TESTERS) await login(name);
+  return { call, store, calls, placesFile, base, login, sessions, close: () => server.close() };
 }
 
 test.afterEach(() => {
@@ -627,50 +629,94 @@ test('메뉴 여러 개 선택: 메뉴별로 세고, 결정 시 가격 확인된
   }
 });
 
-test('계정: 이름으로 DB에 계정이 생기고, 같은 이름이면 같은 계정이며, SB는 관리자 키가 있어야 한다', async () => {
+test('계정: 이름+비밀번호로 가입/로그인하고, 비밀번호는 해시로만 저장되며, 세션으로 사용자를 구분한다', async () => {
   const t = await setup({ noKakao: true, places: MENU_LIST });
   try {
-    let r = await t.call('POST', '/api/users', { name: '  홍길동  ' });
+    let r = await t.call('POST', '/api/auth/login', { name: '  홍길동  ', password: 'secret1' });
     assert.equal(r.status, 201);
     assert.equal(r.body.isNew, true);
     const hong = r.body.user.id;
-    assert.equal(r.body.user.name, '홍길동');
-    assert.ok(t.store.state.users[hong], 'DB에 저장됨');
+    const token1 = r.body.token;
+    const saved = t.store.state.users[hong];
+    assert.equal(saved.name, '홍길동');
+    assert.ok(saved.salt && saved.hash, '해시 저장');
+    assert.ok(!JSON.stringify(saved).includes('secret1'), '원문 비밀번호는 저장하지 않음');
+    assert.ok(!JSON.stringify(t.store.state.sessions).includes(token1), '세션 토큰도 해시로만 저장');
 
-    // 다른 기기에서 같은 이름(대소문자·공백 무관)으로 들어오면 같은 계정
-    r = await t.call('POST', '/api/users', { name: '홍길동' });
+    // 다른 기기에서 같은 이름 + 같은 비밀번호 → 같은 계정
+    r = await t.call('POST', '/api/auth/login', { name: '홍길동', password: 'secret1' });
     assert.equal(r.status, 200);
-    assert.equal(r.body.isNew, false);
     assert.equal(r.body.user.id, hong);
+    const token2 = r.body.token;
+    r = await t.call('POST', '/api/auth/login', { name: '홍길동', password: 'wrong' });
+    assert.equal(r.status, 403);
 
-    assert.equal((await t.call('POST', '/api/users', { name: '   ' })).status, 400);
-    assert.equal((await t.call('POST', '/api/users', { name: 'sb' })).status, 403);
-    const sb = await t.login('SB', 'hs');
-    assert.match(sb, /^u[0-9a-f]{15}$/);
+    assert.equal((await t.call('POST', '/api/auth/login', { name: '   ', password: 'x' })).status, 400);
+    assert.equal((await t.call('POST', '/api/auth/login', { name: '새사람', password: '12' })).status, 400, '비밀번호 4자 이상');
 
+    // SB: 비밀번호 자리에 관리자 키
+    assert.equal((await t.call('POST', '/api/auth/login', { name: 'sb', password: 'nope' })).status, 403);
+    r = await t.call('POST', '/api/auth/login', { name: 'sb', password: 'hs' });
+    assert.equal(r.status, 201);
+    assert.equal(r.body.user.isSuper, true);
+    const sbToken = r.body.token;
+
+    // 세션으로 투표: 두 기기(토큰)여도 같은 계정이면 한 표
     const { round } = (await t.call('POST', '/api/rounds', {})).body;
     const korean = round.candidates.find((c) => c.categoryKey === 'korean');
-    r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: hong, name: '가짜이름', candidateId: korean.id, menus: ['테스트찌개'] });
-    assert.deepEqual(r.body.round.voters[korean.id], [{ name: '홍길동', menus: ['테스트찌개'] }], '이름은 DB 계정 이름을 쓴다');
-
-    // 같은 계정이면 다른 기기에서도 같은 표로 이어진다 (표가 늘지 않고 바뀐다)
-    r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: hong, candidateId: korean.id, menus: [] });
+    r = await t.call('POST', `/api/rounds/${round.id}/vote`, { candidateId: korean.id, menus: ['테스트찌개'] }, { 'x-session': token1 });
+    assert.deepEqual(r.body.round.voters[korean.id], [{ name: '홍길동', menus: ['테스트찌개'] }]);
+    r = await t.call('POST', `/api/rounds/${round.id}/vote`, { candidateId: korean.id, menus: [] }, { 'x-session': token2 });
     assert.equal(r.body.round.totalVotes, 1);
+    assert.equal(r.body.round.myVote.candidateId, korean.id);
 
-    r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: 'u-unknown-123456', candidateId: korean.id });
-    assert.equal(r.status, 401);
+    r = await t.call('POST', `/api/rounds/${round.id}/vote`, { candidateId: korean.id });
+    assert.equal(r.status, 401, '로그인 없이 투표 불가');
     assert.equal(r.body.code, 'no_user');
 
-    r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: sb, candidateId: korean.id });
-    assert.equal(r.status, 403, 'SB 계정은 관리자 키 필요');
-    r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: sb, key: 'hs', candidateId: korean.id });
-    assert.equal(r.status, 200);
+    // me: 일반 계정은 기본 그룹 관리자가 아니고, SB는 관리자
+    assert.equal((await t.call('GET', '/api/state', null, { 'x-session': token1 })).body.me.isAdmin, false);
+    assert.equal((await t.call('GET', '/api/state', null, { 'x-session': sbToken })).body.me.isAdmin, true);
+    assert.equal((await t.call('GET', '/api/auth/me', null, { 'x-session': token1 })).body.user.name, '홍길동');
 
-    const check = await realFetch(`${t.base}/api/admin/check`, { headers: { 'x-admin-key': 'hs' } });
-    assert.equal(check.status, 200);
+    // 로그아웃하면 그 세션은 더 못 쓴다
+    await t.call('POST', '/api/auth/logout', {}, { 'x-session': token1 });
+    assert.equal((await t.call('GET', '/api/auth/me', null, { 'x-session': token1 })).status, 401);
+    assert.equal((await t.call('GET', '/api/auth/me', null, { 'x-session': token2 })).status, 200, '다른 기기 세션은 유지');
+
     const bad = await realFetch(`${t.base}/api/admin/check`, { headers: { 'x-admin-key': 'x', 'x-lang': 'en' } }).then((x) => x.json());
-    assert.equal(bad.error, 'The admin key is incorrect.', '서버 메시지 번역');
+    assert.equal(bad.error, 'Admin permission is required.', '서버 메시지 번역');
   } finally {
+    t.close();
+  }
+});
+
+test('계정: 예전 형식(비밀번호 없는) 계정과 그룹 관리자 정보는 저장소를 읽을 때 모두 지워진다', async () => {
+  const { normalize } = require('../src/store');
+  const old = normalize({
+    users: { u1: { name: '옛사람' } },
+    groups: { default: { history: [{ n: 1 }] }, abc123: { meta: { name: '팀', ownerId: 'u1', adminTokenHash: 'x' } } },
+  });
+  assert.deepEqual(old.users, {});
+  assert.deepEqual(old.sessions, {});
+  assert.equal(old.groups.abc123.meta.ownerId, null);
+  assert.equal(old.groups.abc123.meta.adminTokenHash, null);
+  assert.deepEqual(old.groups.default.history, [{ n: 1 }], '투표 기록은 유지');
+  assert.equal(old.authVersion, 2);
+  // 이미 새 형식이면 지우지 않는다
+  const again = normalize({ ...old, users: { u2: { name: '새사람', salt: 's', hash: 'h' } } });
+  assert.ok(again.users.u2);
+});
+
+test('로그인 실패가 많으면 잠시 막는다', async () => {
+  const t = await setup({ noKakao: true });
+  try {
+    await t.call('POST', '/api/auth/login', { name: '잠금테스트', password: 'right1' });
+    for (let i = 0; i < 5; i++) await t.call('POST', '/api/auth/login', { name: '잠금테스트', password: 'wrong' });
+    const r = await t.call('POST', '/api/auth/login', { name: '잠금테스트', password: 'right1' });
+    assert.equal(r.status, 429);
+  } finally {
+    require('../src/auth').failures.clear();
     t.close();
   }
 });
@@ -783,7 +829,7 @@ test('선택 적중 랭킹: 이름별로 내가 고른 가게가 결정된 비�
   }
 });
 
-test('그룹: 새 그룹을 만들면 따로 투표·통계를 쓰고, 그룹 관리자 키로만 관리한다', async () => {
+test('그룹: 로그인한 계정이 그룹을 만들면 어느 기기에서든 그 그룹 관리자이고, 투표·통계는 그룹별로 분리된다', async () => {
   const t = await setup({ noKakao: true, places: MENU_LIST });
   try {
     const g = (method, p, body, group, headers = {}) =>
@@ -793,44 +839,101 @@ test('그룹: 새 그룹을 만들면 따로 투표·통계를 쓰고, 그룹 �
         body: body ? JSON.stringify(body) : undefined,
       }).then(async (r) => ({ status: r.status, body: await r.json() }));
 
-    let r = await g('POST', '/api/groups', { name: '   ' });
+    assert.equal((await g('POST', '/api/groups', { name: '팀' })).status, 401, '로그인 필요');
+    const owner = await t.login('그룹장', 'owner1');
+    const ownerPc = { 'x-session': owner.token };
+    let r = await g('POST', '/api/groups', { name: '   ' }, null, ownerPc);
     assert.equal(r.status, 400);
-    r = await g('POST', '/api/groups', { name: '  개발팀   점심 ', owner: '홍길동' });
+    r = await g('POST', '/api/groups', { name: '  개발팀   점심 ' }, null, ownerPc);
     assert.equal(r.status, 201);
-    const { id, adminToken } = r.body;
+    const { id } = r.body;
     assert.match(id, /^[a-z0-9]{6,8}$/);
     assert.equal(r.body.name, '개발팀 점심');
 
-    r = await g('GET', '/api/state', null, id);
-    assert.deepEqual(r.body.group, { id, name: '개발팀 점심', isDefault: false });
+    // 다른 기기(새 로그인)에서도 관리자
+    const ownerPhone = { 'x-session': (await t.login('그룹장', 'owner1')).token };
+    r = await g('GET', '/api/state', null, id, ownerPhone);
+    assert.deepEqual(r.body.group, { id, name: '개발팀 점심', owner: '그룹장', isDefault: false });
+    assert.equal(r.body.me.isAdmin, true);
     assert.equal(r.body.placesCount, 4, '새 그룹도 기본 가게 목록에서 시작');
+
+    // 다른 계정은 관리자가 아니고, 그룹장은 기본 그룹 관리자가 아니다
+    const other = { 'x-session': t.sessions[V2] };
+    assert.equal((await g('GET', '/api/state', null, id, other)).body.me.isAdmin, false);
+    assert.equal((await g('GET', '/api/state', null, 'default', ownerPc)).body.me.isAdmin, false);
 
     r = await g('GET', '/api/state', null, 'nope123');
     assert.equal(r.status, 404);
     assert.equal(r.body.code, 'no_group');
 
     // 그룹 투표는 기본 그룹과 분리된다
-    const round = (await g('POST', '/api/rounds', {}, id)).body.round;
-    await g('POST', `/api/rounds/${round.id}/vote`, { voterId: V1, name: '가', candidateId: round.candidates[0].id }, id);
-    const def = (await g('GET', '/api/state')).body;
-    assert.equal(def.round, null, '기본 그룹에는 투표 없음');
-    r = await g('POST', `/api/rounds/${round.id}/vote`, { voterId: V1, name: '가', candidateId: round.candidates[0].id });
+    const round = (await g('POST', '/api/rounds', {}, id, ownerPc)).body.round;
+    await g('POST', `/api/rounds/${round.id}/vote`, { candidateId: round.candidates[0].id }, id, other);
+    assert.equal((await g('GET', '/api/state')).body.round, null, '기본 그룹에는 투표 없음');
+    r = await g('POST', `/api/rounds/${round.id}/vote`, { candidateId: round.candidates[0].id }, 'default', other);
     assert.equal(r.status, 409, '다른 그룹의 투표 id로는 투표 불가');
 
-    // 그룹 관리자 키: 그 그룹에서만 통한다. 전체 관리자 키(hs)는 모든 그룹에서 통한다
-    assert.equal((await g('GET', '/api/admin/check', null, id, { 'x-admin-key': adminToken })).status, 200);
-    assert.equal((await g('GET', '/api/admin/check', null, 'default', { 'x-admin-key': adminToken })).status, 403);
-    assert.equal((await g('GET', '/api/admin/check', null, id, { 'x-admin-key': 'hs' })).status, 200);
-    r = await g('POST', `/api/rounds/${round.id}/complete`, { key: adminToken }, id);
-    assert.equal(r.status, 200);
+    // 완료: 일반 계정은 불가, 그룹장(휴대폰)은 가능
+    assert.equal((await g('POST', `/api/rounds/${round.id}/complete`, {}, id, other)).status, 403);
+    assert.equal((await g('POST', `/api/rounds/${round.id}/complete`, {}, id, ownerPhone)).status, 200);
     assert.equal((await g('GET', '/api/stats', null, id)).body.summary.decisions, 1);
     assert.equal((await g('GET', '/api/stats')).body.summary.decisions, 0);
+
+    // SB는 모든 그룹 관리자이고 전체 현황을 본다
+    const sb = { 'x-session': (await t.login('SB', 'hs')).token };
+    assert.equal((await g('GET', '/api/state', null, id, sb)).body.me.isAdmin, true);
+    assert.equal((await g('GET', '/api/admin/overview', null, null, ownerPc)).status, 403);
+    r = await g('GET', '/api/admin/overview', null, null, sb);
+    assert.equal(r.status, 200);
+    assert.equal(r.body.totals.groups, 2);
+    assert.equal(r.body.totals.decisions, 1);
+    const og = r.body.groups.find((x) => x.id === id);
+    assert.equal(og.name, '개발팀 점심');
+    assert.equal(og.owner, '그룹장');
+    assert.equal(og.decisionsThisMonth, 1);
+    assert.equal(og.members, 1);
+    assert.equal(og.round.status, 'done');
 
     // 그룹 링크도 같은 화면을 준다
     const page = await realFetch(`${t.base}/g/${id}`);
     assert.equal(page.status, 200);
     assert.match(await page.text(), /<html/);
   } finally {
+    t.close();
+  }
+});
+
+test('가게 정보 링크 미리보기: 사이트가 막는지 헤더로 확인하고, 이 그룹 가게 링크만 확인한다', async () => {
+  const { embeddableFromHeaders, cache } = require('../src/frame');
+  const H = (o) => new Headers(o);
+  assert.equal(embeddableFromHeaders(H({})), true);
+  assert.equal(embeddableFromHeaders(H({ 'x-frame-options': 'DENY' })), false);
+  assert.equal(embeddableFromHeaders(H({ 'x-frame-options': 'SAMEORIGIN' })), false);
+  assert.equal(embeddableFromHeaders(H({ 'content-security-policy': "default-src 'self'; frame-ancestors 'self'" })), false);
+  assert.equal(embeddableFromHeaders(H({ 'content-security-policy': 'frame-ancestors *' })), true);
+  assert.equal(embeddableFromHeaders(H({ 'content-security-policy': "default-src 'self'" })), true);
+
+  const places = [
+    { name: '열림가게', category: '한식', url: 'https://open.test/p/1' },
+    { name: '막힘가게', category: '중식', url: 'https://blocked.test/p/2' },
+  ];
+  const t = await setup({ noKakao: true, places });
+  const before = global.fetch;
+  global.fetch = async (url, opts) => {
+    const u = new URL(url);
+    if (u.hostname === 'open.test') return new Response('<html></html>', { status: 200 });
+    if (u.hostname === 'blocked.test') return new Response('<html></html>', { status: 200, headers: { 'x-frame-options': 'DENY' } });
+    return before(url, opts);
+  };
+  try {
+    let r = await t.call('GET', `/api/frame-check?url=${encodeURIComponent('https://open.test/p/1')}`);
+    assert.deepEqual(r.body, { url: 'https://open.test/p/1', embeddable: true });
+    r = await t.call('GET', `/api/frame-check?url=${encodeURIComponent('https://blocked.test/p/2')}`);
+    assert.equal(r.body.embeddable, false);
+    r = await t.call('GET', `/api/frame-check?url=${encodeURIComponent('https://evil.test/')}`);
+    assert.equal(r.status, 400, '목록에 없는 링크는 대신 요청하지 않음');
+  } finally {
+    cache.clear();
     t.close();
   }
 });

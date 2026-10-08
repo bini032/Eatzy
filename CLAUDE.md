@@ -40,6 +40,7 @@ README의 "다른 사람들에게 링크로 공유하기"를 따른다.
 - 후보 출처 우선순위는 저장된 목록(상태의 `places`) > `restaurants.json` > 카카오 실시간 검색이다(`src/app.js`의 `placeSource`).
 - 관리자 API(`/api/admin/places`)는 `x-admin-key` 헤더로 인증한다.
 - 관리자 키 기본값은 `hs`이고 `ADMIN_KEY`로 바꾼다. 키를 화면 코드에 넣지 않는다.
-- 계정은 저장 문서의 `users`(모든 그룹 공통)에 있고, id는 이름에서 만든다(`src/users.js`의 `userIdFor`). 투표·주문 요청의 `voterId`는 등록된 계정 id여야 하며 표시 이름은 DB 값을 쓴다.
-- 이름 `SB`는 관리자 전용이다. 투표·주문 요청에 `name`이 SB면 서버가 관리자 키를 확인한다(`src/app.js`의 `voterFrom`).
+- 계정은 저장 문서의 `users`(모든 그룹 공통)에 있고, id는 이름에서 만든다(`src/users.js`의 `userIdFor`). 비밀번호는 `src/auth.js`의 scrypt 해시로만 저장한다. 로그인하면 세션 토큰을 주고(`sessions`에는 토큰 해시만 저장), 화면은 `x-session` 헤더로 보낸다. 서버는 세션으로만 사용자를 구분한다(`voterFrom`, `isAdminReq`).
+- 관리자: `SB` 계정(비밀번호 = `ADMIN_KEY`, 모든 그룹 관리자 + 전체 현황 `/api/admin/overview`), 그룹을 만든 계정(`meta.ownerId`), 또는 `x-admin-key`/`key`로 보낸 `ADMIN_KEY`(업로드 스크립트용).
+- 저장 문서의 `authVersion`이 바뀌면(`src/store.js`) 예전 계정·세션·그룹 관리자 정보를 지운다.
 - 화면 문구는 `public/i18n.js`(ko/en/ja/zh), 서버 안내 메시지는 `src/i18n.js`(한국어 문장이 키, `x-lang` 헤더로 선택)에 있다. 문구를 추가하면 네 언어를 모두 채운다.

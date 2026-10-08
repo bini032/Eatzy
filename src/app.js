@@ -12,6 +12,9 @@ const { estimateTotal } = require('./price');
 const { translate, pickLang } = require('./i18n');
 const { defaultState } = require('./store');
 const { cleanName, userIdFor } = require('./users');
+const { hashPassword, verifyPassword, tooManyFailures, recordFailure, clearFailures } = require('./auth');
+const { checkEmbeddable } = require('./frame');
+const MAX_SESSIONS_PER_USER = 10;
 
 const MAX_GROUPS = 200;
 const sha256 = (v) => crypto.createHash('sha256').update(String(v)).digest('hex');
@@ -64,32 +67,90 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
   const state = () => groupCtx.getStore().state;
   const groupId = () => groupCtx.getStore().id;
 
-  // 관리자 키: 전체 관리자 키(ADMIN_KEY) 또는 그 그룹을 만들 때 받은 그룹 관리자 키
-  function isAdminKey(key) {
-    if (keyMatches(key, adminKey)) return true;
-    const meta = state().meta;
-    return Boolean(meta && meta.adminTokenHash && key && keyMatches(sha256(key), meta.adminTokenHash));
-  }
-
-  // 계정 등록/로그인: 이름이 곧 ID다(비밀번호 없음). 같은 이름이면 같은 계정으로 들어간다.
-  // 관리자 이름(SB)은 전체 관리자 키가 있어야 한다. 화면은 받은 계정을 브라우저에 기억해 다음에 그대로 쓴다.
-  app.post('/api/users', (req, res) => {
-    const name = cleanName(req.body?.name);
-    if (!name) throw new AppError(400, '이름을 입력해 주세요.');
-    if (name.toLowerCase() === ADMIN_NAME && !keyMatches(req.body?.key, adminKey)) {
-      throw new AppError(403, 'SB는 관리자 전용 이름입니다. 관리자 키를 입력해 주세요.');
-    }
-    const id = userIdFor(name);
-    const users = store.state.users;
-    const now = new Date().toISOString();
-    const existing = users[id];
-    users[id] = existing ? { ...existing, lastSeenAt: now } : { name, createdAt: now, lastSeenAt: now };
-    store.save();
-    res.status(existing ? 200 : 201).json({ user: { id, name: users[id].name }, isNew: !existing });
+  // ---------- 계정과 로그인 ----------
+  // 로그인 세션: 화면이 x-session 헤더로 보내는 토큰. DB에는 토큰의 해시만 저장한다
+  app.use('/api', (req, res, next) => {
+    const token = req.get('x-session');
+    const session = token ? store.state.sessions[sha256(token)] : null;
+    const user = session ? store.state.users[session.userId] : null;
+    req.user = user ? { id: session.userId, name: user.name, super: Boolean(user.super) } : null;
+    req.sessionKey = user ? sha256(token) : null;
+    next();
   });
 
-  // 새 그룹 만들기: 만든 사람이 받은 관리자 키로 그 그룹을 관리한다 (그룹 미들웨어보다 먼저)
+  const userView = (u) => (u ? { id: u.id, name: u.name, isSuper: u.super } : null);
+
+  function requireUser(req) {
+    if (!req.user) throw new AppError(401, '로그인해 주세요.', 'no_user');
+    return req.user;
+  }
+
+  // 관리자: 전체 관리자(SB), 이 그룹을 만든 계정, 또는 관리자 키(ADMIN_KEY, 업로드 스크립트용)
+  function isAdminReq(req) {
+    if (req.user && req.user.super) return true;
+    const meta = state().meta;
+    if (req.user && meta && meta.ownerId && meta.ownerId === req.user.id) return true;
+    return keyMatches(req.get('x-admin-key') ?? req.body?.key, adminKey);
+  }
+
+  // 가입 겸 로그인: 처음 쓰는 이름이면 가입, 있는 이름이면 비밀번호 확인.
+  // SB는 전체 관리자 이름으로, 비밀번호 자리에 관리자 키(ADMIN_KEY)를 넣는다.
+  app.post('/api/auth/login', (req, res) => {
+    const name = cleanName(req.body?.name);
+    const password = String(req.body?.password ?? '');
+    if (!name || !password) throw new AppError(400, '이름과 비밀번호를 입력해 주세요.');
+    const id = userIdFor(name);
+    const users = store.state.users;
+    const failKey = name.toLowerCase();
+    if (tooManyFailures(failKey)) throw new AppError(429, '로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.');
+    const now = new Date().toISOString();
+    let isNew = false;
+
+    if (name.toLowerCase() === ADMIN_NAME) {
+      if (!keyMatches(password, adminKey)) {
+        recordFailure(failKey);
+        throw new AppError(403, '비밀번호가 올바르지 않습니다.');
+      }
+      isNew = !users[id];
+      users[id] = { ...(users[id] || { createdAt: now }), name: 'SB', super: true, lastSeenAt: now };
+    } else if (users[id]) {
+      if (!verifyPassword(password, users[id].salt, users[id].hash)) {
+        recordFailure(failKey);
+        throw new AppError(403, '비밀번호가 올바르지 않습니다.');
+      }
+      users[id].lastSeenAt = now;
+    } else {
+      if (password.length < 4 || password.length > 64) throw new AppError(400, '비밀번호는 4자 이상 64자 이하로 입력해 주세요.');
+      users[id] = { name, ...hashPassword(password), createdAt: now, lastSeenAt: now };
+      isNew = true;
+    }
+    clearFailures(failKey);
+
+    // 새 세션 발급 (계정당 최근 10개만 유지)
+    const token = crypto.randomBytes(32).toString('base64url');
+    const sessions = store.state.sessions;
+    sessions[sha256(token)] = { userId: id, createdAt: now, lastSeenAt: now };
+    const mine = Object.entries(sessions).filter(([, s]) => s.userId === id).sort((a, b) => a[1].createdAt.localeCompare(b[1].createdAt));
+    for (const [k] of mine.slice(0, Math.max(0, mine.length - MAX_SESSIONS_PER_USER))) delete sessions[k];
+    store.save();
+    res.status(isNew ? 201 : 200).json({ token, user: userView({ id, name: users[id].name, super: Boolean(users[id].super) }), isNew });
+  });
+
+  app.post('/api/auth/logout', (req, res) => {
+    if (req.sessionKey) {
+      delete store.state.sessions[req.sessionKey];
+      store.save();
+    }
+    res.json({ ok: true });
+  });
+
+  app.get('/api/auth/me', (req, res) => {
+    res.json({ user: userView(requireUser(req)) });
+  });
+
+  // 새 그룹 만들기: 로그인한 계정이 그 그룹의 관리자가 된다 (그룹 미들웨어보다 먼저)
   app.post('/api/groups', (req, res) => {
+    const owner = requireUser(req);
     const name = String(req.body?.name || '').trim().replace(/\s+/g, ' ').slice(0, 40);
     if (!name) throw new AppError(400, '그룹 이름을 입력해 주세요.');
     const groups = store.state.groups;
@@ -97,13 +158,9 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     let id;
     do id = crypto.randomBytes(6).toString('base64url').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8);
     while (id.length < 6 || groups[id]);
-    const token = crypto.randomBytes(24).toString('base64url');
-    groups[id] = {
-      ...defaultState(),
-      meta: { name, owner: cleanName(req.body?.owner), ownerId: req.body?.owner ? userIdFor(req.body.owner) : null, createdAt: new Date().toISOString(), adminTokenHash: sha256(token) },
-    };
+    groups[id] = { ...defaultState(), meta: { name, owner: owner.name, ownerId: owner.id, createdAt: new Date().toISOString() } };
     store.save();
-    res.status(201).json({ id, name, adminToken: token });
+    res.status(201).json({ id, name });
   });
 
   app.use('/api', (req, res, next) => {
@@ -127,8 +184,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
   }
 
   function requireAdmin(req) {
-    const key = req.get('x-admin-key') ?? req.body?.key;
-    if (!isAdminKey(key)) throw new AppError(403, '관리자 키가 올바르지 않습니다.');
+    if (!isAdminReq(req)) throw new AppError(403, '관리자 권한이 필요합니다.');
   }
 
   // 저장된 목록이 비어 있으면 restaurants.json을 기준으로 삼는다.
@@ -169,17 +225,10 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     return round;
   }
 
-  // 투표/주문 요청의 투표자 id와 이름 확인. 관리자 이름(SB)은 관리자 키가 있어야 쓸 수 있다.
-  // 투표/주문 요청자: 등록된 계정 id여야 하고, 이름은 DB의 계정 이름을 쓴다.
-  // 같은 계정이면 어느 기기에서 들어와도 같은 사람의 표·메뉴로 이어진다.
+  // 투표/주문 요청자: 로그인한 계정. 같은 계정이면 어느 기기에서 들어와도 같은 사람의 표·메뉴로 이어진다.
   function voterFrom(req) {
-    const voterId = String(req.body?.voterId || '');
-    const user = store.state.users[voterId];
-    if (!user) throw new AppError(401, '이름을 먼저 등록해 주세요.', 'no_user');
-    if (user.name.toLowerCase() === ADMIN_NAME && !isAdminKey(req.body?.key)) {
-      throw new AppError(403, 'SB는 관리자 전용 이름입니다. 관리자 키를 입력해 주세요.');
-    }
-    return { voterId, name: user.name };
+    const user = requireUser(req);
+    return { voterId: user.id, name: user.name };
   }
 
   // 결정 후 주문(메뉴 선택)이 바뀌면 결과와 통계 기록의 메뉴 집계를 다시 계산한다
@@ -244,7 +293,8 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     const s = state();
     const src = placeSource();
     res.json({
-      group: { id: groupId(), name: s.meta ? s.meta.name : null, isDefault: groupId() === 'default' },
+      group: { id: groupId(), name: s.meta ? s.meta.name : null, owner: s.meta ? s.meta.owner : null, isDefault: groupId() === 'default' },
+      me: req.user ? { ...userView(req.user), isAdmin: isAdminReq(req) } : null,
       source: src.type,
       placesOrigin: src.origin,
       placesCount: src.places.length,
@@ -255,7 +305,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
       radiusOptions: RADIUS_OPTIONS,
       defaultPlace: defaultPlaceQuery,
       settings: s.settings,
-      round: publicRound(s.round, req.query.voter),
+      round: publicRound(s.round, req.user && req.user.id),
       lastWinner: s.lastWinner,
       history: s.history.slice(-10).reverse(),
     });
@@ -358,7 +408,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     const active = s.round && s.round.status === 'voting' && Object.keys(s.round.votes).length > 0;
     // 오늘 완료된 결과는 관리자만 새 투표로 넘길 수 있다 (다음 날부터는 누구나 시작 가능)
     const doneToday = s.round && s.round.status === 'done' && kstDate(s.round.finishedAt) === kstDate(Date.now());
-    if ((active || doneToday) && !isAdminKey(req.body?.key)) {
+    if ((active || doneToday) && !isAdminReq(req)) {
       if (doneToday) throw new AppError(403, CLOSED_MESSAGE, 'closed');
       throw new AppError(403, '이미 투표가 진행 중입니다. 다시 뽑으려면 관리자 키가 필요합니다.');
     }
@@ -419,7 +469,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
   // 관리자가 후보 가게의 메뉴를 직접 입력/수정. 다음에 같은 가게가 나와도 이 메뉴를 쓴다.
   app.post('/api/rounds/:id/candidates/:cid/menus', (req, res) => {
     const round = currentRound(req.params.id);
-    if (!isAdminKey(req.body?.key)) throw new AppError(403, '관리자 키가 올바르지 않습니다.');
+    requireAdmin(req);
     const candidate = round.candidates.find((c) => c.id === req.params.cid);
     if (!candidate) throw new AppError(404, '후보에 없는 가게입니다.');
     // 결정 후에는 결정된 가게의 메뉴만 고칠 수 있다
@@ -442,7 +492,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
       refreshWinnerOrders(round);
     }
     store.save();
-    res.json({ round: publicRound(round, req.body?.voterId) });
+    res.json({ round: publicRound(round, req.user && req.user.id) });
   });
 
   // 누구나 메뉴 하나를 추가하고 바로 그 메뉴를 내 선택에 넣는다. (수정/삭제는 관리자만 위 API로)
@@ -555,6 +605,66 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     res.json({ round: publicRound(round, voterId) });
   });
 
+  // 가게 정보 링크를 화면 안에 띄울 수 있는지 확인. 아무 주소나 대신 요청하지 않도록 이 그룹 가게의 링크만 받는다
+  app.get('/api/frame-check', async (req, res) => {
+    const url = String(req.query.url || '');
+    const s = state();
+    const places = [...basePlaces(), ...((s.round && s.round.candidates) || []), ...(s.round && s.round.winner ? [s.round.winner] : [])];
+    const known = new Set();
+    for (const p of places) {
+      if (p.url) known.add(p.url);
+      if (p.naverPlaceId) known.add(`https://m.place.naver.com/restaurant/${encodeURIComponent(p.naverPlaceId)}/menu/list`);
+    }
+    if (!/^https?:\/\//.test(url) || !known.has(url)) throw new AppError(400, '확인할 수 없는 링크입니다.');
+    res.json({ url, embeddable: await checkEmbeddable(url) });
+  });
+
+  // 전체 현황 (SB 전용): 모든 그룹의 진행 상황과 이번 달 통합 통계
+  app.get('/api/admin/overview', (req, res) => {
+    if (!(req.user && req.user.super)) throw new AppError(403, '전체 관리자(SB)만 볼 수 있습니다.');
+    const month = kstMonth(Date.now());
+    const totals = { groups: 0, users: Object.keys(store.state.users).length, decisions: 0, votes: 0 };
+    const restaurants = new Map();
+    const groups = Object.entries(store.state.groups).map(([id, g]) => {
+      const st = buildStats(g.history || [], month, CATEGORIES);
+      const members = new Set();
+      for (const h of g.history || []) for (const v of h.voters || []) members.add(v.name.toLowerCase());
+      for (const raw of Object.values((g.round && g.round.votes) || {})) {
+        const v = readVote(raw);
+        if (v.name) members.add(v.name.toLowerCase());
+      }
+      const last = (g.history || []).at(-1);
+      totals.groups++;
+      totals.decisions += st.summary.decisions;
+      totals.votes += st.summary.totalVotes;
+      for (const r of st.restaurants) {
+        const cur = restaurants.get(r.name) || { name: r.name, category: r.category, count: 0 };
+        cur.count += r.count;
+        restaurants.set(r.name, cur);
+      }
+      const round = g.round;
+      return {
+        id,
+        name: g.meta ? g.meta.name : null,
+        owner: g.meta ? g.meta.owner : null,
+        isDefault: id === 'default',
+        createdAt: g.meta ? g.meta.createdAt : null,
+        members: members.size,
+        decisionsThisMonth: st.summary.decisions,
+        decisionsTotal: (g.history || []).length,
+        lastDecision: last ? { name: last.winner.name, at: last.decidedAt } : null,
+        round: round ? { status: round.status, votes: Object.keys(round.votes || {}).length, winner: round.winner ? round.winner.name : null } : null,
+      };
+    });
+    groups.sort((a, b) => (b.isDefault - a.isDefault) || String(b.lastDecision?.at || b.createdAt || '').localeCompare(String(a.lastDecision?.at || a.createdAt || '')));
+    res.json({
+      month,
+      totals,
+      groups,
+      topRestaurants: [...restaurants.values()].sort((a, b) => b.count - a.count).slice(0, 10),
+    });
+  });
+
   // 관리자 키 확인 (화면에서 SB로 등록할 때)
   app.get('/api/admin/check', (req, res) => {
     requireAdmin(req);
@@ -571,12 +681,12 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
       round.draw = { tiedIds: t.tiedIds, winnerId: randomItem(t.tiedIds), at: new Date().toISOString() };
       store.save();
     }
-    res.json({ round: publicRound(round, req.body?.voterId) });
+    res.json({ round: publicRound(round, req.user && req.user.id) });
   });
 
   app.post('/api/rounds/:id/complete', (req, res) => {
     const round = currentRound(req.params.id);
-    if (!isAdminKey(req.body?.key)) throw new AppError(403, '관리자 키가 올바르지 않습니다.');
+    requireAdmin(req);
     if (round.status !== 'voting') throw closedError();
     const t = tally(round);
     if (t.totalVotes === 0) throw new AppError(409, '아직 투표가 없습니다.');
@@ -618,7 +728,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     // 약 2년치 보관 (하루 1회 기준)
     if (s.history.length > 730) s.history = s.history.slice(-730);
     store.save();
-    res.json({ round: publicRound(round, req.body?.voterId) });
+    res.json({ round: publicRound(round, req.user && req.user.id) });
   });
 
   // 화면이 보낸 언어(x-lang)로 안내 메시지를 번역한다

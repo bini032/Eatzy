@@ -19,9 +19,21 @@ function defaultState() {
 }
 
 // 예전 형식(그룹 없이 상태 하나)이면 기본 그룹으로 옮기고, 각 그룹에 빠진 항목을 채운다
+const AUTH_VERSION = 2; // 2: 이름 + 비밀번호 계정
+
 function normalize(raw) {
   const root = raw && raw.groups ? raw : { groups: { default: raw || {} } };
-  root.users = root.users || {}; // 계정 { [사용자id]: { name, createdAt, lastSeenAt } } (모든 그룹 공통)
+  root.users = root.users || {}; // 계정 { [사용자id]: { name, salt, hash, super?, createdAt, lastSeenAt } } (모든 그룹 공통)
+  root.sessions = root.sessions || {}; // 로그인 세션 { [토큰 해시]: { userId, createdAt, lastSeenAt } }
+  // 비밀번호 계정으로 바뀌면서 예전(이름만) 계정과 그룹 관리자 정보는 모두 지운다
+  if (root.authVersion !== AUTH_VERSION) {
+    root.users = {};
+    root.sessions = {};
+    for (const g of Object.values(root.groups)) {
+      if (g && g.meta) g.meta = { ...g.meta, ownerId: null, adminTokenHash: null };
+    }
+    root.authVersion = AUTH_VERSION;
+  }
   for (const [id, g] of Object.entries(root.groups)) root.groups[id] = { ...defaultState(), ...g };
   if (!root.groups.default) root.groups.default = defaultState();
   return root;

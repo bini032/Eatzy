@@ -56,6 +56,7 @@
     applyStatic();
     render();
     if (statsData) renderStats();
+    if (overviewData) renderOverview();
     if (adminPlaces) renderAdmin(adminPlaces);
     if (!$('manualPanel').hidden) renderManual();
   });
@@ -76,95 +77,64 @@
     renderTheme();
   });
 
-  // ---------- 사용자 (DB 계정 + 관리자) ----------
-  // 계정은 서버 DB에 저장되고(이름 = ID), 브라우저는 마지막으로 쓴 계정을 기억해 다음에 자동으로 들어간다
-  let savedUser = null;
-  try {
-    savedUser = JSON.parse(local.get('eatzy-user') || 'null');
-  } catch {}
-  let voterId = (savedUser && savedUser.id) || null; // 투표·주문은 계정 id 기준
-  let userName = (savedUser && savedUser.name) || local.get('eatzy-name') || ''; // eatzy-name: 예전 버전에서 저장한 이름
-  let adminKey = local.get('eatzy-admin-key'); // 전체 관리자(SB) 키
-
-  function saveUser(user) {
-    voterId = user.id;
-    userName = user.name;
-    local.set('eatzy-user', JSON.stringify({ id: user.id, name: user.name }));
-    local.set('eatzy-name', null);
-  }
-
-  // 서버에 계정 등록/로그인 (같은 이름이면 기존 계정)
-  async function loginAs(name, key) {
-    const res = await api('/api/users', { method: 'POST', body: { name, ...(key ? { key } : {}) } });
-    saveUser(res.user);
-    return res;
-  }
-
-  // 시작할 때 기억해 둔 계정으로 자동 로그인 (예전 버전에서 이름만 있던 브라우저도 이때 계정이 생긴다)
-  async function ensureUser() {
-    if (!userName) return false;
-    try {
-      await loginAs(userName, isAdminName(userName) ? adminKey : null);
-      return true;
-    } catch (err) {
-      if (err.status === 403) {
-        adminKey = null;
-        local.set('eatzy-admin-key', null);
-        openUserDialog(true, t('user.adminExpired'));
-      } else {
-        showMessage(err.message, true);
+  // ---------- 사용자 (이름 + 비밀번호 계정, 로그인 세션) ----------
+  // 계정은 서버 DB에 저장되고(비밀번호는 암호화), 브라우저는 로그인 세션 토큰을 기억해 다음에 자동으로 들어간다
+  // "로그인 상태 저장"을 켜면 localStorage(브라우저를 닫아도 유지), 끄면 sessionStorage(브라우저를 닫으면 로그아웃)
+  const temp = {
+    get(k) {
+      try {
+        return sessionStorage.getItem(k);
+      } catch {
+        return null;
       }
-      return false;
-    }
-  }
-
-  // 그룹을 만들 때 받은 그룹 관리자 키 { 그룹id: 키 }
-  function groupTokens() {
-    try {
-      return JSON.parse(local.get('eatzy-group-tokens') || '{}');
-    } catch {
-      return {};
-    }
-  }
-  function setGroupToken(id, token) {
-    const all = groupTokens();
-    if (token) all[id] = token;
-    else delete all[id];
-    local.set('eatzy-group-tokens', JSON.stringify(all));
-  }
-  let groupToken = groupTokens()[groupId] || null;
+    },
+    set(k, v) {
+      try {
+        if (v === null) sessionStorage.removeItem(k);
+        else sessionStorage.setItem(k, v);
+      } catch {}
+    },
+  };
+  let session = null; // { token, id, name }
+  try {
+    session = JSON.parse(local.get('eatzy-session') || temp.get('eatzy-session') || 'null');
+  } catch {}
+  // 예전 버전에서 저장한 값은 지운다 (계정이 새로 바뀌었으므로)
+  for (const k of ['eatzy-user', 'eatzy-name', 'eatzy-admin-key', 'eatzy-group-tokens', 'eatzy-voter']) local.set(k, null);
 
   const isAdminName = (n) => String(n || '').trim().toLowerCase() === 'sb';
-  const isAdmin = () => Boolean(groupToken) || (isAdminName(userName) && Boolean(adminKey));
-  // 관리자 요청에 쓰는 키: 그룹 관리자 키가 있으면 그것, 아니면 SB의 전체 관리자 키
-  const secret = () => groupToken || (isAdminName(userName) ? adminKey : null);
+  // 관리자 여부는 서버가 알려 준다 (SB, 또는 이 그룹을 만든 계정)
+  const isAdmin = () => Boolean(data && data.me && data.me.isAdmin);
+  const isSuper = () => Boolean(data && data.me && data.me.isSuper);
 
-  // 투표·주문 요청에 붙는 내 정보. 관리자는 키를 함께 보낸다
-  function me(extra = {}) {
-    return { voterId, name: userName, ...(secret() ? { key: secret() } : {}), ...extra };
+  function saveSession(next, remember = true) {
+    session = next;
+    const value = next ? JSON.stringify(next) : null;
+    local.set('eatzy-session', remember ? value : null);
+    temp.set('eatzy-session', remember ? null : value);
   }
 
   function renderUser() {
     const btn = $('userBtn');
-    btn.hidden = !userName;
-    btn.textContent = userName ? `👤 ${userName}${isAdmin() ? ` · ${t('user.admin')}` : ''}` : '';
+    btn.hidden = !session;
+    btn.textContent = session ? `👤 ${session.name}${isAdmin() ? ` · ${t('user.admin')}` : ''}` : '';
     btn.title = t('user.change');
     $('completeBtn').hidden = !isAdmin() || !data || !data.round || data.round.status !== 'voting';
     $('adminSection').hidden = !isAdmin();
+    $('overviewSection').hidden = !isSuper();
     const group = data && data.group;
     $('groupBadge').hidden = !(group && !group.isDefault);
     if (group && !group.isDefault) $('groupBadge').textContent = t('group.badge', { name: group.name });
     $('shareBtn').textContent = groupId === 'default' ? t('share') : t('share.group');
   }
 
-  // 이름 등록 창: 일반 참여 / 관리자로 시작하기(새 그룹 만들기)
+  // 로그인 창: 일반 로그인/가입 / 관리자로 시작하기(새 그룹 만들기)
   let groupMode = false;
   function setGroupMode(on) {
     groupMode = on;
     $('userGroup').hidden = !on;
     $('userModeBtn').textContent = on ? t('user.back') : t('user.startAdmin');
     $('userOk').textContent = on ? t('user.create') : t('user.save');
-    $('userAdmin').hidden = on || !isAdminName($('userName').value);
     $('userError').hidden = true;
     if (on) $('userGroupName').focus();
   }
@@ -172,94 +142,80 @@
 
   function openUserDialog(required, errorText) {
     const dialog = $('userDialog');
-    $('userName').value = userName;
-    $('userKey').value = '';
-    $('userAdmin').hidden = !isAdminName(userName);
+    $('userName').value = session ? session.name : $('userName').value;
+    $('userPassword').value = '';
+    $('userAdmin').hidden = !isAdminName($('userName').value);
     $('userCancel').hidden = required;
+    $('userLogout').hidden = !session;
     $('userError').textContent = errorText || '';
     $('userError').hidden = !errorText;
     dialog.dataset.required = required ? '1' : '';
     setGroupMode(false);
     if (!dialog.open) dialog.showModal();
-    $('userName').focus();
+    ($('userName').value ? $('userPassword') : $('userName')).focus();
   }
 
-  // 처음 등록할 때는 Esc로 닫지 못하게 한다
+  // 처음 로그인할 때는 Esc로 닫지 못하게 한다
   $('userDialog').addEventListener('cancel', (e) => {
     if ($('userDialog').dataset.required) e.preventDefault();
   });
   $('userName').addEventListener('input', () => {
-    $('userAdmin').hidden = groupMode || !isAdminName($('userName').value);
+    $('userAdmin').hidden = !isAdminName($('userName').value);
   });
   $('userCancel').addEventListener('click', () => $('userDialog').close());
   $('userBtn').addEventListener('click', () => openUserDialog(false));
 
+  $('userLogout').addEventListener('click', async () => {
+    try {
+      await api('/api/auth/logout', { method: 'POST', body: {} });
+    } catch {}
+    saveSession(null);
+    data = data ? { ...data, me: null } : data;
+    renderUser();
+    openUserDialog(true);
+    showMessage(t('user.loggedOut'));
+  });
+
   $('userForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const name = $('userName').value.trim().replace(/\s+/g, ' ').slice(0, 20);
+    const password = $('userPassword').value;
     const showError = (text) => {
       $('userError').textContent = text;
       $('userError').hidden = false;
     };
     if (!name) return showError(t('user.nameRequired'));
+    if (!password) return showError(t('user.passwordRequired'));
+    const groupName = $('userGroupName').value.trim();
+    if (groupMode && !groupName) return showError(t('user.groupRequired'));
 
-    // 관리자로 시작하기: 새 그룹을 만들고 그 그룹 링크로 이동
-    if (groupMode) {
-      const groupName = $('userGroupName').value.trim();
-      if (!groupName) return showError(t('user.groupRequired'));
-      if (isAdminName(name) && !$('userKey').value && !adminKey) return showError(t('user.keyRequired'));
-      $('userOk').disabled = true;
-      try {
-        await loginAs(name, isAdminName(name) ? $('userKey').value || adminKey : null);
-        const g = await api('/api/groups', { method: 'POST', body: { name: groupName, owner: userName } });
-        setGroupToken(g.id, g.adminToken);
+    $('userOk').disabled = true;
+    try {
+      const res = await api('/api/auth/login', { method: 'POST', body: { name, password } });
+      saveSession({ token: res.token, id: res.user.id, name: res.user.name }, $('userRemember').checked);
+      // 관리자로 시작하기: 새 그룹을 만들고 그 그룹 링크로 이동 (만든 계정이 그 그룹 관리자)
+      if (groupMode) {
+        const g = await api('/api/groups', { method: 'POST', body: { name: groupName } });
         local.set('eatzy-group-created', g.name);
         location.href = `/g/${g.id}`;
-      } catch (err) {
-        showError(err.message);
-      } finally {
-        $('userOk').disabled = false;
+        return;
       }
-      return;
-    }
-
-    let key = null;
-    if (isAdminName(name)) {
-      key = $('userKey').value;
-      if (!key && !(isAdminName(userName) && adminKey)) return showError(t('user.keyRequired'));
-      key = key || adminKey;
-    }
-    $('userOk').disabled = true;
-    let res;
-    try {
-      res = await loginAs(name, key); // SB면 서버가 관리자 키를 확인한다
+      $('userDialog').close();
+      showMessage(t(res.isNew ? 'user.welcomeNew' : 'user.welcomeBack', { name: res.user.name }));
+      await refresh();
+      if (isAdmin()) loadAdmin();
     } catch (err) {
-      return showError(err.message);
+      showError(err.message);
     } finally {
       $('userOk').disabled = false;
     }
-    adminKey = key;
-    local.set('eatzy-admin-key', adminKey);
-    $('userDialog').close();
-    if (!res.isNew) showMessage(t('user.welcomeBack', { name: res.user.name }));
-    await refresh();
-    if (isAdmin()) loadAdmin();
   });
 
-  // 관리자 키가 바뀌어 거부되면 다시 입력받는다
-  function adminRejected() {
-    if (groupToken) {
-      groupToken = null;
-      setGroupToken(groupId, null);
-      renderUser();
-      render();
-      showMessage(t('user.groupAdminLost'), true);
-      return;
-    }
-    adminKey = null;
-    local.set('eatzy-admin-key', null);
+  // 로그인이 만료되었거나 로그아웃된 세션이면 다시 로그인 창
+  function sessionExpired() {
+    saveSession(null);
     renderUser();
-    openUserDialog(false, t('user.adminExpired'));
+    openUserDialog(true, t('user.sessionExpired'));
   }
 
   // ---------- 공통 ----------
@@ -269,7 +225,7 @@
   async function api(path, options = {}) {
     const headers = { 'x-lang': lang, 'x-group': groupId };
     if (options.body) headers['Content-Type'] = 'application/json';
-    if (options.adminKey) headers['x-admin-key'] = options.adminKey;
+    if (session) headers['x-session'] = session.token;
     const res = await fetch(path, {
       method: options.method || 'GET',
       headers,
@@ -631,8 +587,10 @@
 
   async function refresh() {
     try {
-      data = await api(`/api/state?voter=${encodeURIComponent(voterId || '')}`);
+      data = await api('/api/state');
+      if (session && !data.me) return sessionExpired();
       render();
+      if (isSuper() && Date.now() - overviewAt > 30000) loadOverview();
       const key = (data.history && data.history[0] && data.history[0].roundId) || '';
       if (key !== statsKey) {
         statsKey = key;
@@ -678,9 +636,7 @@
       await fn();
     } catch (err) {
       if (err.code === 'closed') showClosed();
-      else if (err.code === 'no_user') {
-        if (await ensureUser()) showMessage(t('user.retry'));
-      } else if (err.status === 403 && isAdminName(userName)) adminRejected();
+      else if (err.code === 'no_user') sessionExpired();
       else showMessage(err.message, true);
     } finally {
       busy = false;
@@ -858,7 +814,7 @@
     const send = (extra) => api('/api/rounds', { method: 'POST', body: { ...body, ...extra } });
     let res;
     try {
-      res = await send(isAdmin() ? { key: secret() } : {});
+      res = await send({});
     } catch (err) {
       if (err.status !== 403) throw err;
       if (err.code === 'closed') return showClosed();
@@ -976,7 +932,7 @@
     withBusy(async () => {
       const res = await api(`/api/rounds/${round.id}/vote`, {
         method: 'POST',
-        body: me({ candidateId: round.myVote && round.myVote.candidateId === candidateId ? null : candidateId }),
+        body: { candidateId: round.myVote && round.myVote.candidateId === candidateId ? null : candidateId },
       });
       applyRound(res.round);
       showMessage('');
@@ -994,7 +950,7 @@
     const current = round.myVote && round.myVote.candidateId === c.id ? round.myVote.menus : [];
     const menus = current.includes(menu) ? current.filter((m) => m !== menu) : [...current, menu];
     withBusy(async () => {
-      const res = await api(`/api/rounds/${round.id}/vote`, { method: 'POST', body: me({ candidateId: c.id, menus }) });
+      const res = await api(`/api/rounds/${round.id}/vote`, { method: 'POST', body: { candidateId: c.id, menus } });
       applyRound(res.round);
       showMessage('');
     });
@@ -1006,7 +962,7 @@
     if (!menu) return;
     const round = data.round;
     await withBusy(async () => {
-      const res = await api(`/api/rounds/${round.id}/candidates/${encodeURIComponent(cid)}/menu-items`, { method: 'POST', body: me({ menu }) });
+      const res = await api(`/api/rounds/${round.id}/candidates/${encodeURIComponent(cid)}/menu-items`, { method: 'POST', body: { menu } });
       input.value = '';
       input.blur();
       applyRound(res.round);
@@ -1030,7 +986,7 @@
     const current = round.myOrder || [];
     const menus = current.includes(menu) ? current.filter((m) => m !== menu) : [...current, menu];
     withBusy(async () => {
-      const res = await api(`/api/rounds/${round.id}/order`, { method: 'POST', body: me({ menus }) });
+      const res = await api(`/api/rounds/${round.id}/order`, { method: 'POST', body: { menus } });
       applyRound(res.round);
       showMessage('');
     });
@@ -1068,19 +1024,14 @@
       try {
         const res = await api(`/api/rounds/${round.id}/candidates/${encodeURIComponent(c.id)}/menus`, {
           method: 'POST',
-          body: { key: secret(), menus, voterId },
+          body: { menus },
         });
         applyRound(res.round);
         close();
         showMessage(menus.length ? t('menu.saved', { name: c.name, n: menus.length }) : t('menu.cleared', { name: c.name }));
       } catch (err) {
-        if (err.status === 403) {
-          close();
-          adminRejected();
-        } else {
-          $('menuError').textContent = err.message;
-          $('menuError').hidden = false;
-        }
+        $('menuError').textContent = err.message;
+        $('menuError').hidden = false;
       } finally {
         $('menuOk').disabled = false;
       }
@@ -1098,7 +1049,7 @@
 
   $('drawBtn').addEventListener('click', () =>
     withBusy(async () => {
-      const res = await api(`/api/rounds/${data.round.id}/draw`, { method: 'POST', body: { voterId } });
+      const res = await api(`/api/rounds/${data.round.id}/draw`, { method: 'POST', body: {} });
       applyRound(res.round);
     })
   );
@@ -1110,7 +1061,7 @@
     if (round.needsDraw) return showMessage(t('complete.needDraw'), true);
     if (!confirm(t('complete.confirm'))) return;
     withBusy(async () => {
-      const res = await api(`/api/rounds/${round.id}/complete`, { method: 'POST', body: { key: secret(), voterId } });
+      const res = await api(`/api/rounds/${round.id}/complete`, { method: 'POST', body: {} });
       applyRound(res.round);
       showMessage('');
       await refresh();
@@ -1202,10 +1153,64 @@
     loadStats();
   });
 
+  // ---------- 전체 현황 (SB) ----------
+  let overviewData = null;
+  let overviewAt = 0;
+
+  async function loadOverview() {
+    if (!isSuper()) return;
+    try {
+      overviewData = await api('/api/admin/overview');
+      overviewAt = Date.now();
+      renderOverview();
+    } catch (err) {
+      $('ovTiles').innerHTML = `<p class="error">${esc(err.message)}</p>`;
+    }
+  }
+
+  function renderOverview() {
+    const ov = overviewData;
+    if (!ov) return;
+    $('ovTiles').innerHTML = [
+      [t('ov.groups'), ov.totals.groups],
+      [t('ov.users'), ov.totals.users],
+      [t('ov.decisions'), ov.totals.decisions],
+      [t('ov.votes'), ov.totals.votes],
+    ]
+      .map(([label, value]) => `<div class="tile"><span class="label">${esc(label)}</span><strong>${esc(value)}</strong></div>`)
+      .join('');
+    $('ovGroups').innerHTML = ov.groups
+      .map((g) => {
+        const status = !g.round
+          ? t('ov.idle')
+          : g.round.status === 'voting'
+            ? t('ov.voting', { n: g.round.votes })
+            : t('ov.done', { name: g.round.winner || '-' });
+        const href = g.isDefault ? '/' : `/g/${g.id}`;
+        const meta = [
+          g.owner ? t('ov.owner', { name: g.owner }) : '',
+          t('ov.members', { n: g.members }),
+          t('ov.monthDecisions', { n: g.decisionsThisMonth }),
+          t('ov.total', { n: g.decisionsTotal }),
+          g.lastDecision ? t('ov.last', { name: g.lastDecision.name, time: formatTime(g.lastDecision.at) }) : '',
+        ].filter(Boolean);
+        return `<li class="${g.id === groupId ? 'current' : ''}">
+          <div class="info">
+            <strong>${esc(g.isDefault ? t('ov.default') : g.name)}</strong>
+            <small>${esc(meta.join(' · '))}</small>
+            <small>${esc(status)}</small>
+          </div>
+          <a class="btn" href="${esc(href)}">${esc(t('ov.open'))}</a>
+        </li>`;
+      })
+      .join('');
+    rankList($('ovTop'), ov.topRestaurants.map((r) => ({ name: r.name, count: r.count, sub: catName(r.category) })), 'stats.times');
+  }
+
   // ---------- 가게 관리 (관리자) ----------
   let adminPlaces = null;
 
-  const adminApi = (path, options = {}) => api(path, { ...options, adminKey: secret() });
+  const adminApi = api;
 
   function adminShowError(text) {
     $('adminError').textContent = text || '';
@@ -1213,8 +1218,7 @@
   }
 
   function adminFail(err) {
-    if (err.status === 403) adminRejected();
-    else adminShowError(err.message);
+    adminShowError(err.message);
   }
 
   async function loadAdmin() {
@@ -1336,11 +1340,10 @@
 
   // ---------- 시작 ----------
   applyStatic();
-  if (!userName) openUserDialog(true);
-  else ensureUser().then((ok) => ok && refresh());
+  if (!session) openUserDialog(true);
   // 방금 만든 그룹이면 안내
   const created = local.get('eatzy-group-created');
-  if (created && groupToken) {
+  if (created) {
     local.set('eatzy-group-created', null);
     showMessage(t('group.created', { name: created }));
   }
