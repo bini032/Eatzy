@@ -54,6 +54,16 @@
     return /^https?:\/\//.test(u || '') ? u : '';
   }
 
+  // 네이버 지도: 가게에 링크가 있으면 그대로, 없으면 "가게 이름 + 주소(층/괄호 제외)" 검색 링크
+  function naverMapUrl(p) {
+    if (safeUrl(p.naverUrl)) return p.naverUrl;
+    const addr = String(p.address || '')
+      .replace(/\(.*?\)/g, '')
+      .replace(/\s+(지하\s*)?\d*층.*$/, '')
+      .trim();
+    return `https://map.naver.com/p/search/${encodeURIComponent(`${p.name} ${addr}`.trim())}`;
+  }
+
   function formatDistance(m) {
     if (m == null) return '';
     return m >= 1000 ? `${(m / 1000).toFixed(1)}km` : `${m}m`;
@@ -149,7 +159,10 @@
       ${w.phone ? `<p>☎ ${esc(w.phone)}</p>` : ''}
       <p>득표 ${w.votes}표 / 총 ${round.totalVotes}표${w.byDraw ? ' · 동점 랜덤 뽑기로 결정' : ''}</p>
       ${menuSummary(w.menuCounts)}
-      ${url ? `<p><a href="${esc(url)}" target="_blank" rel="noopener">지도에서 보기 →</a></p>` : ''}
+      <p class="decision-actions">
+        <a class="btn primary" href="${esc(naverMapUrl(w))}" target="_blank" rel="noopener">🧭 찾아가기 (네이버 지도)</a>
+        ${url ? `<a class="btn" href="${esc(url)}" target="_blank" rel="noopener">가게 정보</a>` : ''}
+      </p>
       <p class="muted small-text">결정 시각 ${formatTime(round.finishedAt)}</p>`;
     el.hidden = false;
   }
@@ -241,7 +254,10 @@
           ${c.memo ? `<div class="meta">${esc(c.memo)}</div>` : ''}
           ${c.address || c.distance != null ? `<div class="meta">${esc(c.address)}${c.address && c.distance != null ? ' · ' : ''}${c.distance != null ? formatDistance(c.distance) : ''}</div>` : ''}
           ${c.phone ? `<div class="meta">☎ ${esc(c.phone)}</div>` : ''}
-          ${url ? `<a href="${esc(url)}" target="_blank" rel="noopener">지도에서 보기</a>` : ''}
+          <div class="links">
+            <a href="${esc(naverMapUrl(c))}" target="_blank" rel="noopener">네이버 지도</a>
+            ${url ? `<a href="${esc(url)}" target="_blank" rel="noopener">가게 정보</a>` : ''}
+          </div>
           ${menuBlock(c, round, done)}
           <div class="bar"><span style="width:${(count / max) * 100}%"></span></div>
           <div class="vote-row">
@@ -660,6 +676,7 @@
       category: f.category.value,
       address: f.address.value.trim(),
       url: f.url.value.trim(),
+      naverUrl: f.naverUrl.value.trim(),
       menus: f.menus.value.split(',').map((m) => m.trim()).filter(Boolean),
     };
     try {

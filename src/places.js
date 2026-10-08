@@ -6,7 +6,7 @@ const LABELS = ['한식', '중식', '양식', '분식'];
 // restaurants.json 형식:
 // [{ "name": "가게명", "category": "한식|중식|양식|분식",
 //    "address": "", "phone": "", "url": "지도 링크", "x": 경도, "y": 위도, "memo": "",
-//    "menus": ["메뉴1", "메뉴2"] }]
+//    "menus": ["메뉴1", "메뉴2"], "naverUrl": "네이버 지도 링크(선택, 없으면 이름+주소 검색 링크)" }]
 // name, category 외에는 선택. x/y가 있으면 기준 위치로부터의 거리와 반경 필터에 쓰인다.
 function validatePlaces(list) {
   const places = [];
@@ -45,6 +45,7 @@ function validatePlaces(list) {
       address,
       phone: String(raw.phone || '').trim(),
       url: String(raw.url || '').trim(),
+      naverUrl: String(raw.naverUrl || '').trim(),
       memo: String(raw.memo || '').trim(),
       menus: cleanMenus(raw.menus || []),
       x: hasX ? x : null,

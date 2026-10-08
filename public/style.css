@@ -252,7 +252,25 @@ span.chip { height: 28px; background: hsl(var(--secondary)); }
 .decision .eyebrow { color: hsl(var(--success)); font-weight: 600; font-size: 14px; margin: 0; }
 .decision h2 { font-size: 28px; margin: 6px 0; letter-spacing: -0.025em; }
 .decision p { margin: 4px 0; }
-.decision a { color: hsl(var(--success)); font-weight: 600; }
+.decision-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin: 14px 0 6px !important; }
+a.btn {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: calc(var(--radius) - 2px);
+  border: 1px solid hsl(var(--input));
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  box-shadow: var(--shadow-sm);
+}
+a.btn:hover { background: hsl(var(--secondary)); }
+a.btn.primary { background: hsl(var(--primary)); border-color: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+a.btn.primary:hover { background: hsl(var(--primary) / 0.9); }
+.card .links { display: flex; gap: 12px; }
 
 #historySection { margin-top: 32px; }
 .history { list-style: none; padding: 0; margin: 8px 0 0; }
