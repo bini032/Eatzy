@@ -144,7 +144,6 @@
     const dialog = $('userDialog');
     $('userName').value = session ? session.name : $('userName').value;
     $('userPassword').value = '';
-    $('userAdminKey').value = '';
     $('userAdmin').hidden = !isAdminName($('userName').value);
     $('userCancel').hidden = required;
     $('userLogout').hidden = !session;
@@ -192,8 +191,7 @@
 
     $('userOk').disabled = true;
     try {
-      const adminKeyInput = $('userAdminKey').value;
-      const res = await api('/api/auth/login', { method: 'POST', body: { name, password, ...(isAdminName(name) && adminKeyInput ? { adminKey: adminKeyInput } : {}) } });
+      const res = await api('/api/auth/login', { method: 'POST', body: { name, password } });
       saveSession({ token: res.token, id: res.user.id, name: res.user.name }, $('userRemember').checked);
       // 관리자로 시작하기: 새 그룹을 만들고 그 그룹 링크로 이동 (만든 계정이 그 그룹 관리자)
       if (groupMode) {

@@ -654,17 +654,13 @@ test('계정: 이름+비밀번호로 가입/로그인하고, 비밀번호는 해
     assert.equal((await t.call('POST', '/api/auth/login', { name: '   ', password: 'x' })).status, 400);
     assert.equal((await t.call('POST', '/api/auth/login', { name: '새사람', password: '12' })).status, 400, '비밀번호 4자 이상');
 
-    // SB: 처음 만들 때만 관리자 키가 필요하고, 비밀번호는 직접 정한다
+    // SB: 다른 계정처럼 처음 입력한 비밀번호로 만들어지는 전체 관리자 계정
     r = await t.call('POST', '/api/auth/login', { name: 'sb', password: 'mysbpw' });
-    assert.equal(r.status, 403);
-    assert.equal(r.body.code, 'need_admin_key');
-    assert.equal((await t.call('POST', '/api/auth/login', { name: 'sb', password: 'mysbpw', adminKey: 'wrong' })).status, 403);
-    r = await t.call('POST', '/api/auth/login', { name: 'sb', password: 'mysbpw', adminKey: 'hs' });
     assert.equal(r.status, 201);
     assert.equal(r.body.user.isSuper, true);
+    assert.equal(r.body.user.name, 'SB');
     assert.ok(t.store.state.users[r.body.user.id].hash, 'SB 비밀번호도 해시로 저장');
-    // 이후에는 정한 비밀번호로만 (관리자 키 hs는 비밀번호로 안 됨)
-    assert.equal((await t.call('POST', '/api/auth/login', { name: 'SB', password: 'hs' })).status, 403);
+    assert.equal((await t.call('POST', '/api/auth/login', { name: 'SB', password: 'hs' })).status, 403, '관리자 키는 SB 비밀번호가 아님');
     r = await t.call('POST', '/api/auth/login', { name: 'SB', password: 'mysbpw' });
     assert.equal(r.status, 200);
     const sbToken = r.body.token;
@@ -892,7 +888,7 @@ test('그룹: 로그인한 계정이 그룹을 만들면 어느 기기에서든 
     assert.equal((await g('GET', '/api/stats')).body.summary.decisions, 0);
 
     // SB는 모든 그룹 관리자이고 전체 현황을 본다
-    const sbLogin = await t.call('POST', '/api/auth/login', { name: 'SB', password: 'sbpw1', adminKey: 'hs' });
+    const sbLogin = await t.call('POST', '/api/auth/login', { name: 'SB', password: 'sbpw1' });
     const sb = { 'x-session': sbLogin.body.token };
     assert.equal((await g('GET', '/api/state', null, id, sb)).body.me.isAdmin, true);
     assert.equal((await g('GET', '/api/admin/overview', null, null, ownerPc)).status, 403);
