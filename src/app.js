@@ -84,6 +84,17 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     };
   }
 
+  // 배포 확인용: 저장소 종류와 가게 목록 상태 (비밀 값은 포함하지 않음)
+  app.get('/api/health', (req, res) => {
+    const src = placeSource();
+    res.json({
+      ok: true,
+      storage: store.redis ? 'Upstash Redis' : '파일 (재시작하면 기록이 사라질 수 있음)',
+      placeSource: src.type === 'list' ? '가게 목록' : src.type === 'kakao' ? '카카오 검색' : '없음 (가게 등록 필요)',
+      placesCount: src.places.length,
+    });
+  });
+
   app.get('/api/state', (req, res) => {
     const s = state();
     const src = placeSource();

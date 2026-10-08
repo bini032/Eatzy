@@ -395,3 +395,16 @@ test('메뉴: 누구나 메뉴를 추가하면 그 메뉴로 투표되고, 다�
     t.close();
   }
 });
+
+test('/api/health: 저장소와 가게 목록 상태를 알려 준다', async () => {
+  const t = await setup({ noKakao: true, places: LIST });
+  try {
+    const r = await t.call('GET', '/api/health');
+    assert.equal(r.status, 200);
+    assert.equal(r.body.placesCount, 5);
+    assert.match(r.body.storage, /파일/);
+    assert.equal(r.body.placeSource, '가게 목록');
+  } finally {
+    t.close();
+  }
+});
