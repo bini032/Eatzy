@@ -19,13 +19,13 @@ function defaultState() {
 }
 
 // 예전 형식(그룹 없이 상태 하나)이면 기본 그룹으로 옮기고, 각 그룹에 빠진 항목을 채운다
-const AUTH_VERSION = 2; // 2: 이름 + 비밀번호 계정
+const AUTH_VERSION = 3; // 2: 이름 + 비밀번호 계정, 3: SB도 자기 비밀번호 사용 (기존 계정 다시 초기화)
 
 function normalize(raw) {
   const root = raw && raw.groups ? raw : { groups: { default: raw || {} } };
   root.users = root.users || {}; // 계정 { [사용자id]: { name, salt, hash, super?, createdAt, lastSeenAt } } (모든 그룹 공통)
   root.sessions = root.sessions || {}; // 로그인 세션 { [토큰 해시]: { userId, createdAt, lastSeenAt } }
-  // 비밀번호 계정으로 바뀌면서 예전(이름만) 계정과 그룹 관리자 정보는 모두 지운다
+  // 계정 방식이 바뀌면 예전 계정·세션과 그룹 관리자 정보는 모두 지운다
   if (root.authVersion !== AUTH_VERSION) {
     root.users = {};
     root.sessions = {};

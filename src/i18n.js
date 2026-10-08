@@ -138,6 +138,11 @@ const MESSAGES = {
   '관리자 권한이 필요합니다.': { en: 'Admin permission is required.', ja: '管理者権限が必要です。', zh: '需要管理员权限。' },
   '전체 관리자(SB)만 볼 수 있습니다.': { en: 'Only the super admin (SB) can view this.', ja: '全体管理者（SB）のみ閲覧できます。', zh: '仅超级管理员（SB）可以查看。' },
   '확인할 수 없는 링크입니다.': { en: 'This link cannot be checked.', ja: '確認できないリンクです。', zh: '无法检查该链接。' },
+  'SB 계정을 처음 만들 때는 관리자 키가 필요합니다.': {
+    en: 'The admin key is required the first time the SB account is created.',
+    ja: 'SB アカウントを初めて作成するときは管理者キーが必要です。',
+    zh: '首次创建 SB 账号时需要管理员密钥。',
+  },
   '존재하지 않는 API입니다.': { en: 'Unknown API.', ja: '存在しない API です。', zh: '不存在的 API。' },
   '요청 형식이 올바르지 않습니다.': { en: 'Invalid request format.', ja: 'リクエストの形式が正しくありません。', zh: '请求格式无效。' },
   '서버 오류가 발생했습니다.': { en: 'A server error occurred.', ja: 'サーバーエラーが発生しました。', zh: '服务器发生错误。' },

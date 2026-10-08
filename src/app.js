@@ -94,7 +94,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
   }
 
   // 가입 겸 로그인: 처음 쓰는 이름이면 가입, 있는 이름이면 비밀번호 확인.
-  // SB는 전체 관리자 이름으로, 비밀번호 자리에 관리자 키(ADMIN_KEY)를 넣는다.
+  // SB는 전체 관리자 계정이다. 처음 만들 때만 관리자 키(ADMIN_KEY)를 확인하고, 이후에는 정한 비밀번호로 로그인한다.
   app.post('/api/auth/login', (req, res) => {
     const name = cleanName(req.body?.name);
     const password = String(req.body?.password ?? '');
@@ -106,13 +106,16 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     const now = new Date().toISOString();
     let isNew = false;
 
-    if (name.toLowerCase() === ADMIN_NAME) {
-      if (!keyMatches(password, adminKey)) {
+    const isSb = name.toLowerCase() === ADMIN_NAME;
+    if (isSb && !(users[id] && users[id].hash)) {
+      // SB 계정 최초 생성: 다른 사람이 먼저 SB를 가져가지 못하게 관리자 키 확인
+      if (!keyMatches(req.body?.adminKey, adminKey)) {
         recordFailure(failKey);
-        throw new AppError(403, '비밀번호가 올바르지 않습니다.');
+        throw new AppError(403, 'SB 계정을 처음 만들 때는 관리자 키가 필요합니다.', 'need_admin_key');
       }
-      isNew = !users[id];
-      users[id] = { ...(users[id] || { createdAt: now }), name: 'SB', super: true, lastSeenAt: now };
+      if (password.length < 4 || password.length > 64) throw new AppError(400, '비밀번호는 4자 이상 64자 이하로 입력해 주세요.');
+      users[id] = { name: 'SB', super: true, ...hashPassword(password), createdAt: now, lastSeenAt: now };
+      isNew = true;
     } else if (users[id]) {
       if (!verifyPassword(password, users[id].salt, users[id].hash)) {
         recordFailure(failKey);

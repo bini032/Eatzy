@@ -654,11 +654,19 @@ test('계정: 이름+비밀번호로 가입/로그인하고, 비밀번호는 해
     assert.equal((await t.call('POST', '/api/auth/login', { name: '   ', password: 'x' })).status, 400);
     assert.equal((await t.call('POST', '/api/auth/login', { name: '새사람', password: '12' })).status, 400, '비밀번호 4자 이상');
 
-    // SB: 비밀번호 자리에 관리자 키
-    assert.equal((await t.call('POST', '/api/auth/login', { name: 'sb', password: 'nope' })).status, 403);
-    r = await t.call('POST', '/api/auth/login', { name: 'sb', password: 'hs' });
+    // SB: 처음 만들 때만 관리자 키가 필요하고, 비밀번호는 직접 정한다
+    r = await t.call('POST', '/api/auth/login', { name: 'sb', password: 'mysbpw' });
+    assert.equal(r.status, 403);
+    assert.equal(r.body.code, 'need_admin_key');
+    assert.equal((await t.call('POST', '/api/auth/login', { name: 'sb', password: 'mysbpw', adminKey: 'wrong' })).status, 403);
+    r = await t.call('POST', '/api/auth/login', { name: 'sb', password: 'mysbpw', adminKey: 'hs' });
     assert.equal(r.status, 201);
     assert.equal(r.body.user.isSuper, true);
+    assert.ok(t.store.state.users[r.body.user.id].hash, 'SB 비밀번호도 해시로 저장');
+    // 이후에는 정한 비밀번호로만 (관리자 키 hs는 비밀번호로 안 됨)
+    assert.equal((await t.call('POST', '/api/auth/login', { name: 'SB', password: 'hs' })).status, 403);
+    r = await t.call('POST', '/api/auth/login', { name: 'SB', password: 'mysbpw' });
+    assert.equal(r.status, 200);
     const sbToken = r.body.token;
 
     // 세션으로 투표: 두 기기(토큰)여도 같은 계정이면 한 표
@@ -702,10 +710,14 @@ test('계정: 예전 형식(비밀번호 없는) 계정과 그룹 관리자 정�
   assert.equal(old.groups.abc123.meta.ownerId, null);
   assert.equal(old.groups.abc123.meta.adminTokenHash, null);
   assert.deepEqual(old.groups.default.history, [{ n: 1 }], '투표 기록은 유지');
-  assert.equal(old.authVersion, 2);
+  assert.equal(old.authVersion, 3);
   // 이미 새 형식이면 지우지 않는다
   const again = normalize({ ...old, users: { u2: { name: '새사람', salt: 's', hash: 'h' } } });
   assert.ok(again.users.u2);
+  // 이전 버전(2)에서 만든 계정도 이번에 다시 지운다
+  const v2 = normalize({ authVersion: 2, users: { u3: { name: 'x', salt: 's', hash: 'h' } }, sessions: { k: {} }, groups: { default: {} } });
+  assert.deepEqual(v2.users, {});
+  assert.deepEqual(v2.sessions, {});
 });
 
 test('로그인 실패가 많으면 잠시 막는다', async () => {
@@ -880,7 +892,8 @@ test('그룹: 로그인한 계정이 그룹을 만들면 어느 기기에서든 
     assert.equal((await g('GET', '/api/stats')).body.summary.decisions, 0);
 
     // SB는 모든 그룹 관리자이고 전체 현황을 본다
-    const sb = { 'x-session': (await t.login('SB', 'hs')).token };
+    const sbLogin = await t.call('POST', '/api/auth/login', { name: 'SB', password: 'sbpw1', adminKey: 'hs' });
+    const sb = { 'x-session': sbLogin.body.token };
     assert.equal((await g('GET', '/api/state', null, id, sb)).body.me.isAdmin, true);
     assert.equal((await g('GET', '/api/admin/overview', null, null, ownerPc)).status, 403);
     r = await g('GET', '/api/admin/overview', null, null, sb);
