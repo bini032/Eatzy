@@ -683,16 +683,50 @@
   let popTimer = null;
   let popKey = null;
 
-  function showPop(target) {
-    const p = placeFor(target.dataset.pop);
-    if (!p) return;
-    clearTimeout(popTimer);
-    if (popKey !== target.dataset.pop || pop.hidden) {
-      popKey = target.dataset.pop;
-      pop.innerHTML = placeDetails(p);
-      pop.hidden = false;
+  // 가게 정보 링크: 네이버 메뉴 탭이 있으면 그쪽, 없으면 출처 링크
+  function infoUrl(p) {
+    if (p.naverPlaceId) return `https://m.place.naver.com/restaurant/${encodeURIComponent(p.naverPlaceId)}/menu/list`;
+    return safeUrl(p.url);
+  }
+
+  // 그 사이트가 다른 화면 안에 띄우는 것을 허용하는지 서버에 확인 (링크별로 한 번만)
+  const frameChecks = new Map();
+  function frameable(url) {
+    if (!frameChecks.has(url)) {
+      frameChecks.set(
+        url,
+        api(`/api/frame-check?url=${encodeURIComponent(url)}`)
+          .then((r) => r.embeddable)
+          .catch(() => false)
+      );
     }
-    // 화면 밖으로 나가지 않게 위치 조정 (기본: 이름 아래)
+    return frameChecks.get(url);
+  }
+
+  // 링크 화면을 그대로 보여 주는 오버레이 (위: 가게 이름과 새 창 열기, 아래: 링크 화면)
+  function frameView(p, url) {
+    return `
+      <div class="frame-head">
+        <span class="badge cat">${esc(catName(p.categoryLabel || p.category))}</span>
+        <strong>${esc(p.name)}</strong>
+        <a href="${esc(url)}" target="_blank" rel="noopener">${esc(t('pop.openNew'))}</a>
+      </div>
+      <iframe class="frame" src="${esc(url)}" title="${esc(p.name)}" referrerpolicy="no-referrer" loading="lazy"></iframe>`;
+  }
+
+  // 허용되는 링크면 요약 정보를 링크 화면으로 바꾼다
+  function upgradeToFrame(el, p, stillCurrent, after) {
+    const url = infoUrl(p);
+    if (!url) return;
+    frameable(url).then((ok) => {
+      if (!ok || !stillCurrent()) return;
+      el.classList.add('framed');
+      el.innerHTML = frameView(p, url);
+      if (after) after();
+    });
+  }
+
+  function placePop(target) {
     const r = target.getBoundingClientRect();
     const w = pop.offsetWidth;
     const h = pop.offsetHeight;
@@ -701,6 +735,21 @@
     if (top + h > window.innerHeight - 8 && r.top - h - 8 > 8) top = r.top - h - 8;
     pop.style.left = `${left + window.scrollX}px`;
     pop.style.top = `${top + window.scrollY}px`;
+  }
+
+  function showPop(target) {
+    const p = placeFor(target.dataset.pop);
+    if (!p) return;
+    clearTimeout(popTimer);
+    if (popKey !== target.dataset.pop || pop.hidden) {
+      const key = target.dataset.pop;
+      popKey = key;
+      pop.classList.remove('framed');
+      pop.innerHTML = placeDetails(p);
+      pop.hidden = false;
+      upgradeToFrame(pop, p, () => !pop.hidden && popKey === key, () => placePop(target));
+    }
+    placePop(target);
   }
 
   function hidePopSoon() {
@@ -727,8 +776,15 @@
     const p = placeFor(target.dataset.pop);
     if (!p) return;
     pop.hidden = true;
-    $('placeDialogBody').innerHTML = placeDetails(p);
-    $('placeDialog').showModal();
+    const dialog = $('placeDialog');
+    const body = $('placeDialogBody');
+    dialog.classList.remove('framed');
+    body.classList.remove('framed');
+    body.innerHTML = placeDetails(p);
+    dialog.showModal();
+    const key = target.dataset.pop;
+    dialog.dataset.key = key;
+    upgradeToFrame(body, p, () => dialog.open && dialog.dataset.key === key, () => dialog.classList.add('framed'));
   });
   $('placeDialogClose').addEventListener('click', () => $('placeDialog').close());
   $('placeDialog').addEventListener('click', (e) => {

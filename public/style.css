@@ -411,9 +411,21 @@ dialog h3 { font-size: 18px; }
 .place-dialog { width: min(440px, calc(100vw - 32px)); max-height: 85vh; }
 .place-dialog .label { margin-top: 8px; }
 
+/* 링크 화면을 그대로 띄우는 경우 */
+.place-pop.framed { width: min(520px, calc(100vw - 16px)); height: min(600px, 75vh); max-height: none; padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+#placeDialogBody.framed { display: flex; flex-direction: column; height: min(70vh, 640px); }
+.place-dialog.framed { width: min(720px, calc(100vw - 32px)); }
+.frame-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid hsl(var(--border)); }
+.frame-head strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.frame-head a { flex: 0 0 auto; font-size: 13px; font-weight: 500; color: hsl(var(--foreground)); }
+#placeDialogBody .frame-head { padding: 0 0 10px; }
+.frame { flex: 1; width: 100%; border: 0; background: #fff; }
+#placeDialogBody .frame { border-radius: var(--radius); border: 1px solid hsl(var(--border)); }
+
 /* 휴대폰: 가게 정보는 화면 아래에서 올라오는 창으로 */
 @media (max-width: 600px) {
-  .place-dialog {
+  .place-dialog,
+  .place-dialog.framed {
     margin: auto 0 0;
     width: 100vw;
     max-width: 100vw;
