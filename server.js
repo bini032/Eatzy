@@ -2,6 +2,11 @@ const path = require('path');
 const { Store } = require('./src/store');
 const { createApp } = require('./src/app');
 
+// .env 파일이 있으면 환경변수로 읽는다 (Windows에서도 같은 방식으로 설정 가능)
+try {
+  process.loadEnvFile(path.join(__dirname, '.env'));
+} catch {}
+
 const port = Number(process.env.PORT) || 3000;
 const dataDir = process.env.DATA_DIR || path.join(__dirname, 'data');
 
