@@ -3,6 +3,7 @@ services:
     name: eatzy
     runtime: node
     plan: free
+    region: singapore
     buildCommand: npm ci --omit=dev
     startCommand: node server.js
     envVars:
