@@ -112,9 +112,9 @@ function stripWinner(w) {
 // 투표 값: { candidateId, menus: [...] } (메뉴 여러 개 선택 가능)
 // 예전 형식(가게 id 문자열, { menu: '하나' })도 읽을 수 있게 맞춘다
 function readVote(v) {
-  if (typeof v === 'string') return { candidateId: v, menus: [] };
+  if (typeof v === 'string') return { candidateId: v, menus: [], name: '' };
   const menus = Array.isArray(v.menus) ? v.menus : v.menu ? [v.menu] : [];
-  return { candidateId: v.candidateId, menus };
+  return { candidateId: v.candidateId, menus, name: v.name || '' };
 }
 
 function tally(round) {

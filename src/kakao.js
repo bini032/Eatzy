@@ -21,10 +21,10 @@ async function call(endpoint, params) {
     res = await fetch(url, { headers: { Authorization: `KakaoAK ${apiKey()}` } });
   } catch (err) {
     if (err instanceof AppError) throw err;
-    throw new AppError(502, `카카오 API에 연결하지 못했습니다: ${err.message}`);
+    throw new AppError(502, '카카오 API에 연결하지 못했습니다: {error}', undefined, { error: err.message });
   }
   if (!res.ok) {
-    throw new AppError(502, `카카오 API 오류 (HTTP ${res.status})`);
+    throw new AppError(502, '카카오 API 오류 (HTTP {status})', undefined, { status: res.status });
   }
   return res.json();
 }
