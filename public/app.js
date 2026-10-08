@@ -24,6 +24,7 @@
   // ---------- 그룹 (주소 /g/그룹id, 없으면 기본 그룹) ----------
   const groupMatch = location.pathname.match(/^\/g\/([a-z0-9]+)/);
   const groupId = groupMatch ? groupMatch[1] : 'default';
+  const isDefaultGroup = groupId === 'default'; // 기본 주소는 입구 화면 (투표는 그룹 링크에서)
 
   // ---------- 언어 ----------
   let lang = I18N[local.get('eatzy-lang')] ? local.get('eatzy-lang') : 'ko';
@@ -116,11 +117,12 @@
 
   function renderUser() {
     const btn = $('userBtn');
-    btn.hidden = !session;
-    btn.textContent = session ? `👤 ${session.name}${isAdmin() ? ` · ${t('user.admin')}` : ''}` : '';
-    btn.title = t('user.change');
-    $('completeBtn').hidden = !isAdmin() || !data || !data.round || data.round.status !== 'voting';
-    $('adminSection').hidden = !isAdmin();
+    btn.hidden = false;
+    btn.textContent = session ? `👤 ${session.name}${isAdmin() ? ` · ${t('user.admin')}` : ''}` : t('user.login');
+    btn.title = session ? t('user.change') : t('user.login');
+    $('completeBtn').hidden = isDefaultGroup || !isAdmin() || !data || !data.round || data.round.status !== 'voting';
+    $('adminSection').hidden = isDefaultGroup || !isAdmin();
+    $('enterBanner').hidden = !isDefaultGroup;
     $('overviewSection').hidden = !isSuper();
     const group = data && data.group;
     $('groupBadge').hidden = !(group && !group.isDefault);
@@ -172,7 +174,8 @@
     saveSession(null);
     data = data ? { ...data, me: null } : data;
     renderUser();
-    openUserDialog(true);
+    if (isDefaultGroup) $('userDialog').close();
+    else openUserDialog(true);
     showMessage(t('user.loggedOut'));
   });
 
@@ -215,8 +218,58 @@
   function sessionExpired() {
     saveSession(null);
     renderUser();
-    openUserDialog(true, t('user.sessionExpired'));
+    if (!isDefaultGroup) openUserDialog(true, t('user.sessionExpired'));
   }
+
+  // ---------- 기본 주소(입구 화면): 로그인·언어·테마·전체 현황 말고는 누르면 "그룹으로 입장해 주세요" ----------
+  function showEnterGroup() {
+    if (!$('enterDialog').open) $('enterDialog').showModal();
+  }
+  function openCreateGroup() {
+    $('enterDialog').close();
+    openUserDialog(false);
+    setGroupMode(true);
+  }
+  $('enterDialogOk').addEventListener('click', () => $('enterDialog').close());
+  $('enterDialogCreate').addEventListener('click', openCreateGroup);
+  $('enterCreateBtn').addEventListener('click', openCreateGroup);
+
+  const ALLOWED_ON_ENTRY = '#userBtn, #langSelect, #themeBtn, #overviewSection, dialog, #enterBanner, .footer';
+  function blockedOnEntry(el) {
+    if (!isDefaultGroup || !el || !el.closest) return false;
+    const control = el.closest('button, a, select, input, textarea, summary, label, [data-pop], .chip');
+    return Boolean(control) && !control.closest(ALLOWED_ON_ENTRY);
+  }
+  for (const type of ['pointerdown', 'mousedown', 'click']) {
+    document.addEventListener(
+      type,
+      (e) => {
+        if (!blockedOnEntry(e.target)) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (type === 'click') showEnterGroup();
+      },
+      true
+    );
+  }
+  document.addEventListener(
+    'keydown',
+    (e) => {
+      if ((e.key === 'Enter' || e.key === ' ') && blockedOnEntry(e.target)) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        showEnterGroup();
+      }
+    },
+    true
+  );
+  document.addEventListener(
+    'focusin',
+    (e) => {
+      if (blockedOnEntry(e.target) && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) e.target.blur();
+    },
+    true
+  );
 
   // ---------- 공통 ----------
   let data = null;
@@ -637,6 +690,7 @@
     } catch (err) {
       if (err.code === 'closed') showClosed();
       else if (err.code === 'no_user') sessionExpired();
+      else if (err.code === 'enter_group') showEnterGroup();
       else showMessage(err.message, true);
     } finally {
       busy = false;
@@ -1396,7 +1450,8 @@
 
   // ---------- 시작 ----------
   applyStatic();
-  if (!session) openUserDialog(true);
+  // 그룹 링크로 들어왔는데 로그인 전이면 로그인 창 (기본 주소는 로그인 없이 화면을 보여 준다)
+  if (!session && !isDefaultGroup) openUserDialog(true);
   // 방금 만든 그룹이면 안내
   const created = local.get('eatzy-group-created');
   if (created) {
@@ -1405,7 +1460,7 @@
   }
   refresh();
   setInterval(() => {
-    const dialogOpen = ['userDialog', 'menuDialog', 'noticeDialog', 'placeDialog'].some((id) => $(id).open);
+    const dialogOpen = ['userDialog', 'menuDialog', 'noticeDialog', 'placeDialog', 'enterDialog'].some((id) => $(id).open);
     if (!busy && !noGroup && !document.hidden && !dialogOpen) refresh();
   }, POLL_MS);
   document.addEventListener('visibilitychange', () => {

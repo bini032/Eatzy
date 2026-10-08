@@ -39,6 +39,7 @@ README의 "다른 사람들에게 링크로 공유하기"를 따른다.
 - 앱에서 추가하거나 편집한 메뉴는 상태의 `menus`에 저장되고, 가게 목록 파일의 `menus`보다 우선한다.
 - 후보 출처 우선순위는 저장된 목록(상태의 `places`) > `restaurants.json` > 카카오 실시간 검색이다(`src/app.js`의 `placeSource`).
 - 관리자 API(`/api/admin/places`)는 `x-admin-key` 헤더로 인증한다.
+- 기본 그룹(`/`)은 입구 화면이다. `server.js`가 `lockDefaultGroup: true`로 기본 그룹의 GET 외 요청을 막는다(테스트 setup은 기본값 false).
 - 관리자 키 기본값은 `hs`이고 `ADMIN_KEY`로 바꾼다. 키를 화면 코드에 넣지 않는다.
 - 계정은 저장 문서의 `users`(모든 그룹 공통)에 있고, id는 이름에서 만든다(`src/users.js`의 `userIdFor`). 비밀번호는 `src/auth.js`의 scrypt 해시로만 저장한다. 로그인하면 세션 토큰을 주고(`sessions`에는 토큰 해시만 저장), 화면은 `x-session` 헤더로 보낸다. 서버는 세션으로만 사용자를 구분한다(`voterFrom`, `isAdminReq`).
 - 관리자: `SB` 계정(일반 계정처럼 처음 입력한 비밀번호로 생성, 모든 그룹 관리자 + 전체 현황 `/api/admin/overview`), 그룹을 만든 계정(`meta.ownerId`), 또는 `x-admin-key`/`key`로 보낸 `ADMIN_KEY`(업로드 스크립트용).

@@ -23,6 +23,7 @@ const store = new Store(path.join(dataDir, 'state.json'), { redis });
 const app = createApp({
   store,
   placesFile: process.env.RESTAURANTS_FILE || path.join(__dirname, 'restaurants.json'),
+  lockDefaultGroup: true, // 기본 주소(/)는 입구 화면: 투표는 그룹 링크에서만
   adminKey: process.env.ADMIN_KEY || 'hs',
   defaultPlaceQuery: process.env.DEFAULT_PLACE_QUERY || '더존을지타워',
   defaultOrigin:

@@ -36,6 +36,14 @@
       </div>
     </header>
 
+    <div id="enterBanner" class="enter-banner" hidden>
+      <div>
+        <strong data-i18n="enter.title">그룹으로 입장해 주세요</strong>
+        <p data-i18n="enter.text"></p>
+      </div>
+      <button id="enterCreateBtn" class="primary small" type="button" data-i18n="enter.create">👑 새 그룹 만들기</button>
+    </div>
+
     <section class="panel" id="locationPanel">
       <div class="loc-row">
         <div class="loc-info">
@@ -249,6 +257,15 @@
     <div id="placeDialogBody"></div>
     <div class="dialog-actions">
       <button id="placeDialogClose" class="ghost" type="button" data-i18n="pop.close">닫기</button>
+    </div>
+  </dialog>
+
+  <dialog id="enterDialog">
+    <h3 data-i18n="enter.title">그룹으로 입장해 주세요</h3>
+    <p class="muted" data-i18n="enter.text"></p>
+    <div class="dialog-actions">
+      <button id="enterDialogCreate" class="ghost" type="button" data-i18n="enter.create">👑 새 그룹 만들기</button>
+      <button id="enterDialogOk" class="primary" type="button" data-i18n="ok">확인</button>
     </div>
   </dialog>
 

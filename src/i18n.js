@@ -139,6 +139,7 @@ const MESSAGES = {
   '전체 관리자(SB)만 볼 수 있습니다.': { en: 'Only the super admin (SB) can view this.', ja: '全体管理者（SB）のみ閲覧できます。', zh: '仅超级管理员（SB）可以查看。' },
   '확인할 수 없는 링크입니다.': { en: 'This link cannot be checked.', ja: '確認できないリンクです。', zh: '无法检查该链接。' },
 
+  '그룹으로 입장해 주세요.': { en: 'Please enter through a group link.', ja: 'グループのリンクから入ってください。', zh: '请通过群组链接进入。' },
   '존재하지 않는 API입니다.': { en: 'Unknown API.', ja: '存在しない API です。', zh: '不存在的 API。' },
   '요청 형식이 올바르지 않습니다.': { en: 'Invalid request format.', ja: 'リクエストの形式が正しくありません。', zh: '请求格式无效。' },
   '서버 오류가 발생했습니다.': { en: 'A server error occurred.', ja: 'サーバーエラーが発生しました。', zh: '服务器发生错误。' },

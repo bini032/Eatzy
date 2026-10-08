@@ -57,7 +57,7 @@ async function setup(opts = {}) {
   const store = new Store(path.join(dir, 'state.json'));
   const placesFile = path.join(dir, 'restaurants.json');
   if (opts.places) fs.writeFileSync(placesFile, JSON.stringify(opts.places));
-  const app = createApp({ store, adminKey: 'hs', defaultPlaceQuery: '더존을지타워', defaultOrigin: null, placesFile });
+  const app = createApp({ store, adminKey: 'hs', defaultPlaceQuery: '더존을지타워', defaultOrigin: null, placesFile, lockDefaultGroup: Boolean(opts.lockDefaultGroup) });
   const server = await new Promise((resolve) => {
     const s = app.listen(0, () => resolve(s));
   });
@@ -961,6 +961,29 @@ test('화면: 버전이 붙은 주소로 파일을 주고, 화면은 캐시하�
     const health = (await t.call('GET', '/api/health')).body;
     assert.equal(health.build, m[1]);
     assert.equal((await realFetch(`${t.base}/app.js?v=${m[1]}`)).status, 200);
+  } finally {
+    t.close();
+  }
+});
+
+test('기본 그룹 잠금: 기본 주소에서는 조회만 되고, 투표·설정 변경은 그룹으로 입장하라고 안내한다', async () => {
+  const t = await setup({ noKakao: true, places: MENU_LIST, lockDefaultGroup: true });
+  try {
+    let r = await t.call('POST', '/api/rounds', {});
+    assert.equal(r.status, 403);
+    assert.equal(r.body.code, 'enter_group');
+    assert.equal(r.body.error, '그룹으로 입장해 주세요.');
+    assert.equal((await t.call('POST', '/api/location', { radius: 500 })).status, 403);
+    assert.equal((await t.call('GET', '/api/state')).status, 200, '조회는 가능');
+    assert.equal((await t.call('GET', '/api/stats')).status, 200);
+
+    // 로그인과 그룹 만들기는 기본 주소에서도 된다
+    const owner = await t.login('입구테스트', 'pw1234');
+    r = await t.call('POST', '/api/groups', { name: '팀' }, { 'x-session': owner.token });
+    assert.equal(r.status, 201);
+    // 만든 그룹에서는 투표 가능
+    r = await t.call('POST', '/api/rounds', {}, { 'x-group': r.body.id, 'x-session': owner.token });
+    assert.equal(r.status, 201);
   } finally {
     t.close();
   }

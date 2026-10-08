@@ -351,6 +351,24 @@ dialog h3 { font-size: 18px; }
 .rank-bar > span { display: block; height: 100%; border-radius: 4px; background: hsl(var(--primary)); }
 .rank-empty { font-size: 13px; color: hsl(var(--muted-foreground)); }
 
+/* ---------- 기본 주소 입구 안내 ---------- */
+.enter-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid hsl(var(--brand) / 0.5);
+  border-radius: calc(var(--radius) + 4px);
+  background: hsl(var(--brand) / 0.08);
+}
+.enter-banner > div { flex: 1; min-width: 0; }
+.enter-banner p { margin: 2px 0 0; font-size: 13px; color: hsl(var(--muted-foreground)); }
+.enter-banner button { flex: 0 0 auto; }
+@media (max-width: 480px) {
+  .enter-banner { flex-direction: column; align-items: stretch; }
+}
+
 /* ---------- 그룹 / 이름 등록 ---------- */
 .group-badge {
   display: inline-flex;

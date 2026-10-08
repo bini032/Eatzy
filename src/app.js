@@ -56,7 +56,8 @@ function validCoords(x, y) {
   return Number.isFinite(x) && Number.isFinite(y) && Math.abs(x) <= 180 && Math.abs(y) <= 90;
 }
 
-function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFile }) {
+// lockDefaultGroup: 기본 그룹(/)은 입구 화면으로만 쓰고, 투표·설정 같은 변경은 그룹 링크(/g/그룹id)에서만 받는다
+function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFile, lockDefaultGroup = false }) {
   const app = express();
   app.use(express.json({ limit: '1mb' })); // 가게 목록 일괄 업로드 때문에 넉넉하게
   // 배포 버전: Render가 넣어 주는 커밋 값(없으면 서버 시작 시각). 화면 파일 주소에 붙여 예전 파일이 캐시되지 않게 한다
@@ -172,6 +173,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     const id = String(req.get('x-group') || req.query.g || 'default');
     const groupState = store.state.groups[id];
     if (!groupState) throw new AppError(404, '그룹을 찾을 수 없습니다.', 'no_group');
+    if (lockDefaultGroup && id === 'default' && req.method !== 'GET') throw new AppError(403, '그룹으로 입장해 주세요.', 'enter_group');
     groupCtx.run({ id, state: groupState }, next);
   });
 
