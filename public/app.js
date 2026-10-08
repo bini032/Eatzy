@@ -54,14 +54,24 @@
     return /^https?:\/\//.test(u || '') ? u : '';
   }
 
-  // 네이버 지도: 가게에 링크가 있으면 그대로, 없으면 "가게 이름 + 주소(층/괄호 제외)" 검색 링크
+  // 네이버 지도: 장소 번호가 있으면 그 장소, 링크만 있으면 그 링크, 없으면 가게 이름 검색
   function naverMapUrl(p) {
+    if (p.naverPlaceId) return `https://map.naver.com/p/entry/place/${encodeURIComponent(p.naverPlaceId)}`;
     if (safeUrl(p.naverUrl)) return p.naverUrl;
-    const addr = String(p.address || '')
-      .replace(/\(.*?\)/g, '')
-      .replace(/\s+(지하\s*)?\d*층.*$/, '')
-      .trim();
-    return `https://map.naver.com/p/search/${encodeURIComponent(`${p.name} ${addr}`.trim())}`;
+    return `https://map.naver.com/p/search/${encodeURIComponent(p.name)}`;
+  }
+
+  // 네이버 플레이스 메뉴 탭 (장소 번호가 있을 때만)
+  function naverMenuUrl(p) {
+    return p.naverPlaceId ? `https://m.place.naver.com/restaurant/${encodeURIComponent(p.naverPlaceId)}/menu/list` : '';
+  }
+
+  // 가게 정보 링크: 네이버 메뉴 탭이 있으면 그쪽, 없으면 출처 링크
+  function infoLink(p, cls) {
+    const menu = naverMenuUrl(p);
+    if (menu) return `<a${cls ? ` class="${cls}"` : ''} href="${esc(menu)}" target="_blank" rel="noopener">메뉴 보기 (네이버)</a>`;
+    const url = safeUrl(p.url);
+    return url ? `<a${cls ? ` class="${cls}"` : ''} href="${esc(url)}" target="_blank" rel="noopener">가게 정보</a>` : '';
   }
 
   function formatDistance(m) {
@@ -149,7 +159,6 @@
       return;
     }
     const w = round.winner;
-    const url = safeUrl(w.url);
     el.innerHTML = `
       <p class="eyebrow">🎉 오늘의 점심이 결정됐어요</p>
       <h2>${esc(w.name)}</h2>
@@ -161,7 +170,7 @@
       ${menuSummary(w.menuCounts)}
       <p class="decision-actions">
         <a class="btn primary" href="${esc(naverMapUrl(w))}" target="_blank" rel="noopener">🧭 찾아가기 (네이버 지도)</a>
-        ${url ? `<a class="btn" href="${esc(url)}" target="_blank" rel="noopener">가게 정보</a>` : ''}
+        ${infoLink(w, 'btn')}
       </p>
       <p class="muted small-text">결정 시각 ${formatTime(round.finishedAt)}</p>`;
     el.hidden = false;
@@ -241,7 +250,6 @@
         const count = round.counts[c.id] || 0;
         const mine = Boolean(round.myVote && round.myVote.candidateId === c.id);
         const leader = round.leaderId === c.id;
-        const url = safeUrl(c.url);
         return `
         <article class="card${mine ? ' mine' : ''}${leader ? ' leader' : ''}">
           <div class="card-top">
@@ -256,7 +264,7 @@
           ${c.phone ? `<div class="meta">☎ ${esc(c.phone)}</div>` : ''}
           <div class="links">
             <a href="${esc(naverMapUrl(c))}" target="_blank" rel="noopener">네이버 지도</a>
-            ${url ? `<a href="${esc(url)}" target="_blank" rel="noopener">가게 정보</a>` : ''}
+            ${infoLink(c)}
           </div>
           ${menuBlock(c, round, done)}
           <div class="bar"><span style="width:${(count / max) * 100}%"></span></div>
@@ -622,6 +630,7 @@
   }
 
   function renderAdmin(places) {
+    adminPlaces = places;
     $('adminCount').textContent = String(places.length);
     const labels = ['한식', '중식', '양식', '분식'];
     $('adminList').innerHTML = places.length
@@ -637,6 +646,7 @@
                   <strong>${esc(p.name)}</strong>
                   <small>${[p.address, p.menus.length ? `메뉴 ${p.menus.length}개: ${p.menus.slice(0, 5).join(', ')}${p.menus.length > 5 ? '…' : ''}` : '메뉴 없음'].filter(Boolean).map(esc).join(' · ')}</small>
                 </div>
+                <button class="small" data-naver="${esc(p.id)}" type="button">${p.naverPlaceId ? '네이버 ✓' : '네이버 링크'}</button>
                 <button class="small danger" data-del="${esc(p.id)}" data-name="${esc(p.name)}" type="button">삭제</button>
               </div>`
               )
@@ -706,6 +716,31 @@
         res.places,
         `${res.saved}곳을 저장했어요.${res.errors.length ? ` 형식 오류로 ${res.errors.length}곳은 제외했어요.` : ''}`
       );
+    } catch (err) {
+      adminShowError(err.message);
+    }
+  });
+
+  // 가게별 네이버 지도 링크 등록: 네이버 지도에서 가게를 열고 공유 > 링크 복사 한 주소를 붙여넣는다
+  let adminPlaces = [];
+  $('adminList').addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-naver]');
+    if (!btn) return;
+    const place = adminPlaces.find((p) => p.id === btn.dataset.naver);
+    if (!place) return;
+    const input = prompt(
+      `"${place.name}"의 네이버 지도 장소 링크를 붙여넣으세요.\n예: https://map.naver.com/p/entry/place/1234567\n(naver.me 짧은 링크는 브라우저에서 한 번 열어 바뀐 주소를 복사해 주세요. 비우면 링크를 지웁니다)`,
+      place.naverUrl || ''
+    );
+    if (input === null) return;
+    const naverUrl = input.trim();
+    if (naverUrl && !/(?:\/place\/|\/restaurant\/|[?&]id=)\d{5,}|^\d{5,}$/.test(naverUrl)) {
+      adminShowError('장소 번호가 들어 있는 네이버 지도 링크가 아닙니다. 예: https://map.naver.com/p/entry/place/1234567');
+      return;
+    }
+    try {
+      const res = await adminApi('/api/admin/places', { method: 'POST', body: { mode: 'merge', places: [{ ...place, naverUrl, naverPlaceId: '' }] } });
+      await adminAfterChange(res.places, naverUrl ? `"${place.name}"에 네이버 링크를 저장했어요.` : `"${place.name}"의 네이버 링크를 지웠어요.`);
     } catch (err) {
       adminShowError(err.message);
     }

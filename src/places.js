@@ -7,6 +7,7 @@ const LABELS = ['한식', '중식', '양식', '분식'];
 // [{ "name": "가게명", "category": "한식|중식|양식|분식",
 //    "address": "", "phone": "", "url": "지도 링크", "x": 경도, "y": 위도, "memo": "",
 //    "menus": ["메뉴1", "메뉴2"], "naverUrl": "네이버 지도 링크(선택, 없으면 이름+주소 검색 링크)" }]
+// naverUrl이 네이버 지도/플레이스 장소 링크면 장소 번호(naverPlaceId)를 뽑아 메뉴 탭 링크에 쓴다.
 // name, category 외에는 선택. x/y가 있으면 기준 위치로부터의 거리와 반경 필터에 쓰인다.
 function validatePlaces(list) {
   const places = [];
@@ -46,6 +47,7 @@ function validatePlaces(list) {
       phone: String(raw.phone || '').trim(),
       url: String(raw.url || '').trim(),
       naverUrl: String(raw.naverUrl || '').trim(),
+      naverPlaceId: naverPlaceId(raw.naverPlaceId) || naverPlaceId(raw.naverUrl),
       memo: String(raw.memo || '').trim(),
       menus: cleanMenus(raw.menus || []),
       x: hasX ? x : null,
@@ -53,6 +55,15 @@ function validatePlaces(list) {
     });
   });
   return { places, errors };
+}
+
+// 장소 번호 또는 네이버 장소 링크에서 번호 추출
+// 예: https://map.naver.com/p/entry/place/1234567, https://m.place.naver.com/restaurant/1234567/menu/list
+function naverPlaceId(value) {
+  const v = String(value || '').trim();
+  if (/^\d{5,}$/.test(v)) return v;
+  const m = v.match(/(?:\/place\/|\/restaurant\/|[?&]id=)(\d{5,})/);
+  return m ? m[1] : '';
 }
 
 const MAX_MENUS = 30;
@@ -87,4 +98,4 @@ function loadPlaces(file) {
   return validatePlaces(parsed);
 }
 
-module.exports = { loadPlaces, validatePlaces, cleanMenus, LABELS };
+module.exports = { loadPlaces, validatePlaces, cleanMenus, naverPlaceId, LABELS };

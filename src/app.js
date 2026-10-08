@@ -55,10 +55,18 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     if (!keyMatches(key, adminKey)) throw new AppError(403, '관리자 키가 올바르지 않습니다.');
   }
 
-  // 관리자 화면용: 앱에서 추가/편집한 메뉴를 반영한 저장 목록
+  // 저장된 목록이 비어 있으면 restaurants.json을 기준으로 삼는다.
+  // (관리자가 한 곳만 추가/수정해도 파일의 나머지 가게가 사라지지 않도록)
+  function basePlaces() {
+    const s = state();
+    if ((s.places || []).length) return s.places;
+    return placesFile ? loadPlaces(placesFile).places : [];
+  }
+
+  // 관리자 화면용: 앱에서 추가/편집한 메뉴를 반영한 목록
   function savedPlacesView() {
     const s = state();
-    return (s.places || []).map((p) => ({ ...p, menus: s.menus[p.id] || p.menus || [] }));
+    return basePlaces().map((p) => ({ ...p, menus: s.menus[p.id] || p.menus || [] }));
   }
 
   // 기준 위치. 카카오 키도 고정 좌표도 없으면 null (등록 목록 모드에서 거리 계산 생략)
@@ -201,7 +209,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
       throw new AppError(400, errors.length ? `저장할 수 있는 가게가 없습니다. ${errors.slice(0, 5).join(' / ')}` : '저장할 가게가 없습니다.');
     }
     const s = state();
-    const byId = new Map(mode === 'replace' ? [] : (s.places || []).map((p) => [p.id, p]));
+    const byId = new Map(mode === 'replace' ? [] : basePlaces().map((p) => [p.id, p]));
     for (const p of places) {
       byId.set(p.id, p);
       // 앱에서 따로 저장된 메뉴가 있으면 새로 올린 메뉴를 합친다
@@ -215,9 +223,10 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
   app.delete('/api/admin/places/:id', (req, res) => {
     requireAdmin(req);
     const s = state();
-    const before = (s.places || []).length;
-    s.places = (s.places || []).filter((p) => p.id !== req.params.id);
-    if (s.places.length === before) throw new AppError(404, '저장된 목록에 없는 가게입니다.');
+    const base = basePlaces();
+    const rest = base.filter((p) => p.id !== req.params.id);
+    if (rest.length === base.length) throw new AppError(404, '저장된 목록에 없는 가게입니다.');
+    s.places = rest;
     delete s.menus[req.params.id];
     store.save();
     res.json({ places: savedPlacesView() });

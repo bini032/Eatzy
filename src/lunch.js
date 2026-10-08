@@ -105,8 +105,8 @@ async function pickCandidates(state, origin, radius, poolFor) {
 }
 
 function stripWinner(w) {
-  const { id, name, category, address, phone, url, naverUrl, memo, menus, x, y } = w;
-  return { id, name, category, address, phone, url, naverUrl, memo, menus, x, y };
+  const { id, name, category, address, phone, url, naverUrl, naverPlaceId, memo, menus, x, y } = w;
+  return { id, name, category, address, phone, url, naverUrl, naverPlaceId, memo, menus, x, y };
 }
 
 // 투표 값: { candidateId, menu } (예전 형식인 가게 id 문자열도 허용)

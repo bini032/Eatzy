@@ -430,8 +430,8 @@ test('현재 위치: 카카오 키가 없으면 OpenStreetMap으로 위치 이�
   }
 });
 
-test('가게 목록 DB: 관리자 키로 업로드/병합/삭제하고, 저장된 목록이 파일보다 우선한다', async () => {
-  const t = await setup({ noKakao: true, places: LIST });
+test('가게 목록 DB: 관리자 키로 업로드/병합/삭제하고, 저장된 목록에서 후보를 뽑는다', async () => {
+  const t = await setup({ noKakao: true });
   try {
     const up = (body, key = 'hs') =>
       realFetch(`${t.base}/api/admin/places`, {
@@ -469,7 +469,7 @@ test('가게 목록 DB: 관리자 키로 업로드/병합/삭제하고, 저장�
     const del = await realFetch(`${t.base}/api/admin/places/${id}`, { method: 'DELETE', headers: { 'x-admin-key': 'hs' } });
     assert.equal(del.status, 200);
     s = await t.call('GET', '/api/state');
-    assert.equal(s.body.placesOrigin, 'file', '저장 목록이 비면 파일 목록으로 돌아감');
+    assert.equal(s.body.placesOrigin, null, '저장 목록이 비고 파일도 없으면 출처 없음');
   } finally {
     t.close();
   }
@@ -499,6 +499,34 @@ test('완료 후: 투표/메뉴 추가는 완료 안내를, 오늘 새 투표는
     assert.equal(r.body.code, 'closed');
     r = await t.call('POST', '/api/rounds', { key: 'hs' });
     assert.equal(r.status, 201);
+  } finally {
+    t.close();
+  }
+});
+
+test('네이버 장소 번호: 링크에서 번호를 뽑고, 저장 목록이 비어 있으면 파일 목록을 기준으로 수정한다', async () => {
+  const { naverPlaceId } = require('../src/places');
+  assert.equal(naverPlaceId('https://map.naver.com/p/entry/place/1234567?c=15.00'), '1234567');
+  assert.equal(naverPlaceId('https://m.place.naver.com/restaurant/7654321/menu/list'), '7654321');
+  assert.equal(naverPlaceId('1234567'), '1234567');
+  assert.equal(naverPlaceId('https://naver.me/abc'), '');
+
+  const t = await setup({ noKakao: true, places: LIST });
+  try {
+    const list = (await realFetch(`${t.base}/api/admin/places`, { headers: { 'x-admin-key': 'hs' } }).then((r) => r.json())).places;
+    assert.equal(list.length, 5, '저장 목록이 비어 있으면 파일 목록을 보여 줌');
+
+    const target = list.find((p) => p.name === '목록중식');
+    const res = await realFetch(`${t.base}/api/admin/places`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-key': 'hs' },
+      body: JSON.stringify({ mode: 'merge', places: [{ ...target, naverUrl: 'https://map.naver.com/p/entry/place/1234567' }] }),
+    }).then((r) => r.json());
+    assert.equal(res.total, 5, '한 곳만 수정해도 나머지 파일 가게가 유지됨');
+    assert.equal(res.places.find((p) => p.name === '목록중식').naverPlaceId, '1234567');
+
+    const round = (await t.call('POST', '/api/rounds', {})).body.round;
+    assert.equal(round.candidates.find((c) => c.categoryKey === 'chinese').naverPlaceId, '1234567');
   } finally {
     t.close();
   }
