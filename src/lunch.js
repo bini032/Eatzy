@@ -9,8 +9,10 @@ const CATEGORIES = [
 ];
 
 const MAX_PAGES = 3; // 카카오 키워드 검색은 최대 45건(15건 x 3페이지)까지 조회 가능
-const POOL_TTL_MS = 6 * 60 * 60 * 1000;
-const poolCache = new Map();
+
+function hasCoords(p) {
+  return p && Number.isFinite(p.x) && Number.isFinite(p.y);
+}
 
 function distanceMeters(a, b) {
   const R = 6371000;
@@ -21,12 +23,14 @@ function distanceMeters(a, b) {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-// 카테고리별 후보 풀: 반경 안의 음식점 중 카카오 분류에 해당 카테고리명이 들어간 곳.
-async function categoryPool(category, origin, radius) {
-  const cacheKey = `${category.key}|${origin.x.toFixed(5)}|${origin.y.toFixed(5)}|${radius}`;
-  const cached = poolCache.get(cacheKey);
-  if (cached && Date.now() - cached.at < POOL_TTL_MS) return cached.places;
+// 위치를 알 수 없으면 null (거리 표시/반경 필터 생략)
+function distanceOrNull(origin, p) {
+  return hasCoords(origin) && hasCoords(p) ? Math.round(distanceMeters(origin, p)) : null;
+}
 
+// 카카오 검색: 반경 안의 음식점 중 카카오 분류에 해당 카테고리명이 들어간 곳.
+// 이용 정책상 검색 결과를 저장하지 않도록 매번 실시간으로 조회한다.
+async function kakaoPool(category, origin, radius) {
   const seen = new Map();
   for (let page = 1; page <= MAX_PAGES; page++) {
     const { places, isEnd } = await kakao.keywordSearch({
@@ -42,9 +46,16 @@ async function categoryPool(category, origin, radius) {
     }
     if (isEnd) break;
   }
-  const places = [...seen.values()];
-  poolCache.set(cacheKey, { at: Date.now(), places });
-  return places;
+  return [...seen.values()];
+}
+
+// 등록 목록: 좌표가 있는 가게만 반경으로 거르고, 좌표가 없는 가게는 항상 포함.
+function listPool(places, category, origin, radius) {
+  return places.filter((p) => {
+    if (p.category !== category.label) return false;
+    const d = distanceOrNull(origin, p);
+    return d === null || d <= radius;
+  });
 }
 
 function randomItem(list) {
@@ -52,24 +63,24 @@ function randomItem(list) {
 }
 
 // 카테고리마다 한 곳씩 뽑는다.
-// - 직전 확정 가게는 같은 카테고리 자리에 다시 노출(현재 위치 반경 안일 때만)
+// - 직전 확정 가게는 같은 카테고리 자리에 다시 노출(위치를 알면 반경 안일 때만)
 // - 나머지는 이전에 노출된 적 없는 곳 위주로 랜덤, 다 돌면 기록을 비우고 다시 시작
-async function pickCandidates(state, origin, radius) {
+// poolFor(category) -> Promise<place[]>
+async function pickCandidates(state, origin, radius, poolFor) {
   const candidates = [];
   const missing = [];
   const lastWinner = state.lastWinner;
 
   for (const cat of CATEGORIES) {
-    if (
-      lastWinner &&
-      lastWinner.categoryKey === cat.key &&
-      distanceMeters(origin, lastWinner) <= radius
-    ) {
-      candidates.push({ ...stripWinner(lastWinner), categoryKey: cat.key, categoryLabel: cat.label, pinned: true });
-      continue;
+    if (lastWinner && lastWinner.categoryKey === cat.key) {
+      const d = distanceOrNull(origin, lastWinner);
+      if (d === null || d <= radius) {
+        candidates.push({ ...stripWinner(lastWinner), distance: d, categoryKey: cat.key, categoryLabel: cat.label, pinned: true });
+        continue;
+      }
     }
 
-    const pool = (await categoryPool(cat, origin, radius)).filter((p) => !lastWinner || p.id !== lastWinner.id);
+    const pool = (await poolFor(cat)).filter((p) => !lastWinner || p.id !== lastWinner.id);
     if (pool.length === 0) {
       missing.push(cat.label);
       continue;
@@ -84,22 +95,18 @@ async function pickCandidates(state, origin, radius) {
     state.recent[cat.key] = [...recent, pick.id];
     candidates.push({
       ...pick,
-      distance: Math.round(distanceMeters(origin, pick)),
+      distance: distanceOrNull(origin, pick),
       categoryKey: cat.key,
       categoryLabel: cat.label,
       pinned: false,
     });
   }
-
-  for (const c of candidates) {
-    if (c.pinned) c.distance = Math.round(distanceMeters(origin, c));
-  }
   return { candidates, missing };
 }
 
 function stripWinner(w) {
-  const { id, name, category, address, phone, url, x, y } = w;
-  return { id, name, category, address, phone, url, x, y };
+  const { id, name, category, address, phone, url, memo, x, y } = w;
+  return { id, name, category, address, phone, url, memo, x, y };
 }
 
 function tally(round) {
@@ -129,4 +136,4 @@ function sameSet(a, b) {
   return a.length === b.length && [...a].sort().join('|') === [...b].sort().join('|');
 }
 
-module.exports = { CATEGORIES, pickCandidates, tally, distanceMeters, randomItem, poolCache };
+module.exports = { CATEGORIES, pickCandidates, kakaoPool, listPool, tally, distanceMeters, hasCoords, randomItem };

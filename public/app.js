@@ -102,9 +102,26 @@
   function renderLocation() {
     const { settings, radiusOptions, defaultPlace } = data;
     const origin = settings.origin;
-    $('locName').textContent = origin ? origin.name : `${defaultPlace} (기본, 첫 검색 때 위치 확인)`;
-    $('locAddr').textContent = origin ? origin.address || '' : '';
-    $('locDefaultBtn').textContent = `🏢 ${defaultPlace}(기본)`;
+    const listMode = data.source === 'list';
+    if (origin) {
+      $('locName').textContent = origin.name;
+      $('locAddr').textContent = origin.address || '';
+    } else if (data.kakaoEnabled) {
+      $('locName').textContent = `${defaultPlace} (기본, 첫 검색 때 위치 확인)`;
+      $('locAddr').textContent = '';
+    } else {
+      $('locName').textContent = '지정 안 됨';
+      $('locAddr').textContent = '등록된 가게 전체에서 뽑습니다. 현재 위치를 지정하면 좌표가 있는 가게는 반경으로 거릅니다.';
+    }
+    $('locDefaultBtn').textContent = data.defaultLocatable ? `🏢 ${defaultPlace}(기본)` : '위치 지정 해제';
+    $('locSearchToggle').hidden = !data.kakaoEnabled;
+    if (!data.kakaoEnabled) $('locSearchForm').hidden = $('locResults').hidden = true;
+    $('sourceInfo').textContent =
+      listMode
+        ? `후보: 등록된 가게 ${data.placesCount}곳에서 뽑기${data.placesErrors ? ` (형식 오류 ${data.placesErrors}건 제외됨)` : ''}`
+        : data.source === 'kakao'
+          ? '후보: 카카오맵 실시간 검색'
+          : '후보로 쓸 가게가 아직 없습니다. 관리자가 restaurants.json에 가게를 등록해야 합니다.';
 
     const sel = $('radiusSelect');
     if (sel.options.length !== radiusOptions.length) {
@@ -125,11 +142,12 @@
     el.innerHTML = `
       <p class="eyebrow">🎉 오늘의 점심이 결정됐어요</p>
       <h2>${esc(w.name)}</h2>
-      <p>${esc(w.categoryLabel)} · ${esc(w.category)}</p>
-      <p class="muted">${esc(w.address)}${w.distance != null ? ` · 약 ${formatDistance(w.distance)}` : ''}</p>
+      <p>${esc(w.categoryLabel)}${w.category && w.category !== w.categoryLabel ? ` · ${esc(w.category)}` : ''}</p>
+      ${w.memo ? `<p>${esc(w.memo)}</p>` : ''}
+      ${w.address || w.distance != null ? `<p class="muted">${esc(w.address)}${w.address && w.distance != null ? ' · ' : ''}${w.distance != null ? `약 ${formatDistance(w.distance)}` : ''}</p>` : ''}
       ${w.phone ? `<p>☎ ${esc(w.phone)}</p>` : ''}
       <p>득표 ${w.votes}표 / 총 ${round.totalVotes}표${w.byDraw ? ' · 동점 랜덤 뽑기로 결정' : ''}</p>
-      ${url ? `<p><a href="${esc(url)}" target="_blank" rel="noopener">카카오맵에서 보기 →</a></p>` : ''}
+      ${url ? `<p><a href="${esc(url)}" target="_blank" rel="noopener">지도에서 보기 →</a></p>` : ''}
       <p class="muted small-text">결정 시각 ${formatTime(round.finishedAt)}</p>`;
     el.hidden = false;
   }
@@ -146,7 +164,8 @@
     $('roundSection').querySelector('h2').textContent = done ? '투표 결과' : '투표하기';
     $('voteSummary').textContent = `총 ${round.totalVotes}표`;
     $('roundMeta').textContent =
-      `기준: ${round.origin.name} · 반경 ${formatDistance(round.radius)} · ${formatTime(round.createdAt)} 시작` +
+      (round.origin ? `기준: ${round.origin.name} · 반경 ${formatDistance(round.radius)} · ` : '') +
+      `${formatTime(round.createdAt)} 시작` +
       (round.missing && round.missing.length ? ` · 주변에 없는 카테고리: ${round.missing.join(', ')}` : '');
 
     const max = Math.max(1, ...Object.values(round.counts));
@@ -164,10 +183,11 @@
             ${leader ? `<span class="badge">${done ? '최종 선택' : '현재 1위'}</span>` : ''}
           </div>
           <h3>${esc(c.name)}</h3>
-          <div class="meta">${esc(c.category)}</div>
-          <div class="meta">${esc(c.address)}${c.distance != null ? ` · ${formatDistance(c.distance)}` : ''}</div>
+          ${c.category && c.category !== c.categoryLabel ? `<div class="meta">${esc(c.category)}</div>` : ''}
+          ${c.memo ? `<div class="meta">${esc(c.memo)}</div>` : ''}
+          ${c.address || c.distance != null ? `<div class="meta">${esc(c.address)}${c.address && c.distance != null ? ' · ' : ''}${c.distance != null ? formatDistance(c.distance) : ''}</div>` : ''}
           ${c.phone ? `<div class="meta">☎ ${esc(c.phone)}</div>` : ''}
-          ${url ? `<a href="${esc(url)}" target="_blank" rel="noopener">카카오맵 정보 보기</a>` : ''}
+          ${url ? `<a href="${esc(url)}" target="_blank" rel="noopener">지도에서 보기</a>` : ''}
           <div class="bar"><span style="width:${(count / max) * 100}%"></span></div>
           <div class="vote-row">
             <strong>${count}표</strong>
@@ -276,7 +296,7 @@
   $('locDefaultBtn').addEventListener('click', () =>
     withBusy(async () => {
       await setLocation({ mode: 'default' });
-      showMessage('기준 위치를 기본 위치로 되돌렸어요.');
+      showMessage(data.defaultLocatable ? '기준 위치를 기본 위치로 되돌렸어요.' : '위치 지정을 해제했어요. 등록된 가게 전체에서 뽑습니다.');
     })
   );
 

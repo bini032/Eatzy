@@ -3,7 +3,8 @@ const crypto = require('crypto');
 const express = require('express');
 const { AppError } = require('./errors');
 const kakao = require('./kakao');
-const { CATEGORIES, pickCandidates, tally, randomItem } = require('./lunch');
+const { CATEGORIES, pickCandidates, kakaoPool, listPool, tally, randomItem } = require('./lunch');
+const { loadPlaces } = require('./places');
 
 const RADIUS_OPTIONS = [300, 500, 1000, 1500, 2000];
 
@@ -17,18 +18,32 @@ function validCoords(x, y) {
   return Number.isFinite(x) && Number.isFinite(y) && Math.abs(x) <= 180 && Math.abs(y) <= 90;
 }
 
-function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin }) {
+function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFile }) {
   const app = express();
   app.use(express.json({ limit: '20kb' }));
   app.use(express.static(path.join(__dirname, '..', 'public')));
 
   const state = () => store.state;
 
+  const kakaoEnabled = () => Boolean(process.env.KAKAO_REST_API_KEY);
+
+  // 가게 후보 출처: 등록 목록(restaurants.json)에 가게가 있으면 목록, 없으면 카카오 검색
+  function placeSource() {
+    const list = placesFile ? loadPlaces(placesFile) : { places: [], errors: [] };
+    if (list.errors.length) console.warn(`[가게 목록] ${list.errors.length}개 항목 오류:\n- ${list.errors.join('\n- ')}`);
+    if (list.places.length) return { type: 'list', places: list.places, errors: list.errors };
+    if (kakaoEnabled()) return { type: 'kakao', places: [], errors: list.errors };
+    return { type: null, places: [], errors: list.errors };
+  }
+
+  // 기준 위치. 카카오 키도 고정 좌표도 없으면 null (등록 목록 모드에서 거리 계산 생략)
   async function resolveOrigin() {
     if (state().settings.origin) return state().settings.origin;
     let origin;
     if (defaultOrigin) {
       origin = { name: defaultPlaceQuery, x: defaultOrigin.x, y: defaultOrigin.y, source: 'default' };
+    } else if (!kakaoEnabled()) {
+      return null;
     } else {
       const { places } = await kakao.keywordSearch({ query: defaultPlaceQuery, size: 1 });
       if (!places.length) throw new AppError(502, `기본 위치 "${defaultPlaceQuery}"를 찾지 못했습니다.`);
@@ -70,7 +85,13 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin }) {
 
   app.get('/api/state', (req, res) => {
     const s = state();
+    const src = placeSource();
     res.json({
+      source: src.type,
+      placesCount: src.places.length,
+      placesErrors: src.errors.length,
+      kakaoEnabled: kakaoEnabled(),
+      defaultLocatable: Boolean(defaultOrigin) || kakaoEnabled(),
       categories: CATEGORIES,
       radiusOptions: RADIUS_OPTIONS,
       defaultPlace: defaultPlaceQuery,
@@ -125,17 +146,28 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin }) {
     if (active && !keyMatches(req.body?.key, adminKey)) {
       throw new AppError(403, '이미 투표가 진행 중입니다. 다시 뽑으려면 관리자 키가 필요합니다.');
     }
+    const src = placeSource();
+    if (!src.type) {
+      throw new AppError(503, '가게 목록(restaurants.json)이 비어 있고 KAKAO_REST_API_KEY도 없어 후보를 뽑을 수 없습니다. README를 참고해 가게를 등록해 주세요.');
+    }
     const origin = await resolveOrigin();
     const radius = s.settings.radius;
-    const { candidates, missing } = await pickCandidates(s, origin, radius);
+    const poolFor = src.type === 'list' ? async (cat) => listPool(src.places, cat, origin, radius) : (cat) => kakaoPool(cat, origin, radius);
+    const { candidates, missing } = await pickCandidates(s, origin, radius, poolFor);
     if (candidates.length === 0) {
-      throw new AppError(404, `반경 ${radius}m 안에서 맛집을 찾지 못했습니다. 반경을 넓히거나 위치를 바꿔 보세요.`);
+      throw new AppError(
+        404,
+        src.type === 'list'
+          ? `등록된 가게 중 반경 ${radius}m 안에 있는 곳이 없습니다. 반경을 넓히거나 위치를 바꿔 보세요.`
+          : `반경 ${radius}m 안에서 맛집을 찾지 못했습니다. 반경을 넓히거나 위치를 바꿔 보세요.`
+      );
     }
     s.round = {
       id: crypto.randomUUID(),
       status: 'voting',
       createdAt: new Date().toISOString(),
-      origin: { name: origin.name, address: origin.address, x: origin.x, y: origin.y },
+      source: src.type,
+      origin: origin ? { name: origin.name, address: origin.address, x: origin.x, y: origin.y } : null,
       radius,
       candidates,
       missing,

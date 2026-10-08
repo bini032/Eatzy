@@ -5,7 +5,6 @@ const os = require('os');
 const path = require('path');
 const { Store } = require('../src/store');
 const { createApp } = require('../src/app');
-const { poolCache } = require('../src/lunch');
 
 // 테스트용 가짜 카카오 응답 (실제 가게 정보 아님)
 const ORIGIN = { x: 126.98, y: 37.566 };
@@ -44,13 +43,15 @@ function installFakeKakao({ counts = { 한식: 3, 중식: 2, 양식: 2, 분식: 
   return calls;
 }
 
-async function setup(opts) {
+async function setup(opts = {}) {
   process.env.KAKAO_REST_API_KEY = 'test';
-  poolCache.clear();
+  if (opts.noKakao) delete process.env.KAKAO_REST_API_KEY;
   const calls = installFakeKakao(opts);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'eatzy-'));
   const store = new Store(path.join(dir, 'state.json'));
-  const app = createApp({ store, adminKey: 'hs', defaultPlaceQuery: '더존을지타워', defaultOrigin: null });
+  const placesFile = path.join(dir, 'restaurants.json');
+  if (opts.places) fs.writeFileSync(placesFile, JSON.stringify(opts.places));
+  const app = createApp({ store, adminKey: 'hs', defaultPlaceQuery: '더존을지타워', defaultOrigin: null, placesFile });
   const server = await new Promise((resolve) => {
     const s = app.listen(0, () => resolve(s));
   });
@@ -63,7 +64,7 @@ async function setup(opts) {
     });
     return { status: res.status, body: await res.json() };
   };
-  return { call, store, calls, close: () => server.close() };
+  return { call, store, calls, placesFile, close: () => server.close() };
 }
 
 test.afterEach(() => {
@@ -207,13 +208,68 @@ test('현재 위치/장소 지정으로 기준 위치를 바꾼다', async () =>
   }
 });
 
-test('API 키가 없으면 가짜 데이터 대신 명확한 오류를 준다', async () => {
-  const t = await setup();
-  delete process.env.KAKAO_REST_API_KEY;
+test('가게 목록도 API 키도 없으면 가짜 데이터 대신 명확한 오류를 준다', async () => {
+  const t = await setup({ noKakao: true });
   try {
     const r = await t.call('POST', '/api/rounds', {});
     assert.equal(r.status, 503);
-    assert.match(r.body.error, /KAKAO_REST_API_KEY/);
+    assert.match(r.body.error, /restaurants\.json/);
+    assert.equal(t.calls.length, 0);
+  } finally {
+    t.close();
+  }
+});
+
+// 테스트용 가짜 가게 목록 (실제 가게 아님)
+const LIST = [
+  { name: '목록한식A', category: '한식', x: 126.98, y: 37.566 },
+  { name: '목록한식B', category: '한식', x: 127.1, y: 37.6 }, // 기준점에서 약 13km
+  { name: '목록중식', category: '중식' },
+  { name: '목록양식', category: '양식', address: '테스트로 1', url: 'https://example.com/w' },
+  { name: '목록분식', category: '분식', memo: '테스트 메모' },
+];
+
+test('카카오 키 없이 등록된 가게 목록에서 뽑는다', async () => {
+  const t = await setup({ noKakao: true, places: LIST });
+  try {
+    const s = await t.call('GET', '/api/state');
+    assert.equal(s.body.source, 'list');
+    assert.equal(s.body.placesCount, 5);
+    assert.equal(s.body.kakaoEnabled, false);
+
+    const r = await t.call('POST', '/api/rounds', {});
+    assert.equal(r.status, 201);
+    assert.equal(r.body.round.origin, null);
+    assert.deepEqual(r.body.round.candidates.map((c) => c.categoryLabel), ['한식', '중식', '양식', '분식']);
+    assert.equal(t.calls.length, 0, '카카오 호출 없음');
+  } finally {
+    t.close();
+  }
+});
+
+test('목록 모드: 현재 위치를 지정하면 좌표 있는 가게는 반경으로 거른다', async () => {
+  const t = await setup({ noKakao: true, places: LIST });
+  try {
+    await t.call('POST', '/api/location', { mode: 'current', x: 126.98, y: 37.566, radius: 1000 });
+    for (let i = 0; i < 4; i++) {
+      const r = await t.call('POST', '/api/rounds', {});
+      const korean = r.body.round.candidates.find((c) => c.categoryKey === 'korean');
+      assert.equal(korean.name, '목록한식A');
+      assert.equal(korean.distance, 0);
+      assert.equal(r.body.round.candidates.find((c) => c.categoryKey === 'chinese').distance, null);
+    }
+  } finally {
+    t.close();
+  }
+});
+
+test('목록 파일 수정은 재시작 없이 반영되고, 형식 오류 항목은 제외된다', async () => {
+  const t = await setup({ noKakao: true, places: LIST });
+  try {
+    fs.writeFileSync(t.placesFile, JSON.stringify([...LIST, { name: '', category: '한식' }, { name: '이상한곳', category: '일식' }]));
+    const s = await t.call('GET', '/api/state');
+    assert.equal(s.body.placesCount, 5);
+    assert.equal(s.body.placesErrors, 2);
   } finally {
     t.close();
   }

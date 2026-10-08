@@ -10,6 +10,7 @@ const defaultY = Number(process.env.DEFAULT_ORIGIN_Y);
 
 const app = createApp({
   store: new Store(path.join(dataDir, 'state.json')),
+  placesFile: process.env.RESTAURANTS_FILE || path.join(__dirname, 'restaurants.json'),
   adminKey: process.env.ADMIN_KEY || 'hs',
   defaultPlaceQuery: process.env.DEFAULT_PLACE_QUERY || '더존을지타워',
   defaultOrigin:
@@ -19,7 +20,7 @@ const app = createApp({
 });
 
 if (!process.env.KAKAO_REST_API_KEY) {
-  console.warn('[경고] KAKAO_REST_API_KEY가 없어 맛집 검색이 동작하지 않습니다. README를 참고하세요.');
+  console.log('KAKAO_REST_API_KEY 없음: restaurants.json에 등록된 가게 목록으로만 후보를 뽑습니다.');
 }
 
 app.listen(port, () => {

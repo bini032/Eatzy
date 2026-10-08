@@ -101,6 +101,7 @@ select, input[type="search"], input[type="password"] {
 .loc-search { display: flex; gap: 6px; margin-top: 10px; }
 .loc-search button { flex: 0 0 auto; }
 .loc-results { list-style: none; margin: 8px 0 0; padding: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.source-info { margin: 10px 0 0; }
 .loc-results li + li { border-top: 1px solid var(--border); }
 .loc-results button { width: 100%; text-align: left; border: 0; border-radius: 0; background: transparent; }
 .loc-results button:hover { background: var(--surface-2); }
