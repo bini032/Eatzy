@@ -9,6 +9,7 @@ function defaultState() {
     },
     round: null,
     lastWinner: null,
+    menus: {}, // 관리자가 앱에서 입력한 가게별 메뉴 { [가게id]: ["메뉴", ...] }
     history: [],
     recent: {},
   };

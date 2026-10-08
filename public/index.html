@@ -56,6 +56,7 @@
         <span id="voteSummary" class="muted"></span>
       </div>
       <p id="roundMeta" class="muted small-text"></p>
+      <p id="myChoice" class="my-choice" hidden></p>
       <div id="candidates" class="cards"></div>
 
       <div id="tieBox" class="tie" hidden>
@@ -83,6 +84,21 @@
       <div class="dialog-actions">
         <button value="cancel" formnovalidate class="ghost" type="submit">취소</button>
         <button id="keyOk" value="ok" class="primary" type="submit">확인</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="menuDialog">
+    <form id="menuForm">
+      <h3 id="menuTitle">메뉴 입력</h3>
+      <p class="muted small-text">한 줄에 메뉴 하나씩 입력하세요. 다음에 이 가게가 다시 나와도 이 메뉴를 씁니다.</p>
+      <textarea id="menuInput" rows="7" placeholder="메뉴 이름을 한 줄에 하나씩"></textarea>
+      <label class="label" for="menuKey">관리자 키</label>
+      <input id="menuKey" type="password" autocomplete="off" required />
+      <p id="menuError" class="error" hidden></p>
+      <div class="dialog-actions">
+        <button id="menuCancel" class="ghost" type="button">취소</button>
+        <button id="menuOk" class="primary" type="submit">저장</button>
       </div>
     </form>
   </dialog>

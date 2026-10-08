@@ -5,7 +5,8 @@ const LABELS = ['한식', '중식', '양식', '분식'];
 
 // restaurants.json 형식:
 // [{ "name": "가게명", "category": "한식|중식|양식|분식",
-//    "address": "", "phone": "", "url": "지도 링크", "x": 경도, "y": 위도, "memo": "" }]
+//    "address": "", "phone": "", "url": "지도 링크", "x": 경도, "y": 위도, "memo": "",
+//    "menus": ["메뉴1", "메뉴2"] }]
 // name, category 외에는 선택. x/y가 있으면 기준 위치로부터의 거리와 반경 필터에 쓰인다.
 function validatePlaces(list) {
   const places = [];
@@ -28,6 +29,9 @@ function validatePlaces(list) {
     if (hasX !== hasY || (hasX && (!Number.isFinite(x) || !Number.isFinite(y)))) {
       return errors.push(`${where} (${name}): x(경도), y(위도)는 둘 다 숫자로 넣거나 둘 다 비워 두세요.`);
     }
+    if (raw.menus !== undefined && !(Array.isArray(raw.menus) && raw.menus.every((m) => typeof m === 'string'))) {
+      return errors.push(`${where} (${name}): menus는 문자열 배열이어야 합니다. 예: ["김치찌개", "제육볶음"]`);
+    }
     const address = String(raw.address || '').trim();
     const id = raw.id ? String(raw.id) : 'list-' + crypto.createHash('sha1').update(`${name}|${address}`).digest('hex').slice(0, 12);
     if (ids.has(id)) return errors.push(`${where} (${name}): 중복된 가게입니다.`);
@@ -42,11 +46,26 @@ function validatePlaces(list) {
       phone: String(raw.phone || '').trim(),
       url: String(raw.url || '').trim(),
       memo: String(raw.memo || '').trim(),
+      menus: cleanMenus(raw.menus || []),
       x: hasX ? x : null,
       y: hasY ? y : null,
     });
   });
   return { places, errors };
+}
+
+const MAX_MENUS = 30;
+const MAX_MENU_LENGTH = 40;
+
+// 공백 제거, 빈 값/중복 제거, 개수와 길이 제한
+function cleanMenus(list) {
+  const out = [];
+  for (const m of list) {
+    const v = String(m).trim().slice(0, MAX_MENU_LENGTH);
+    if (v && !out.includes(v)) out.push(v);
+    if (out.length >= MAX_MENUS) break;
+  }
+  return out;
 }
 
 // 파일은 매번 다시 읽는다. 서버를 재시작하지 않아도 목록 수정이 바로 반영된다.
@@ -67,4 +86,4 @@ function loadPlaces(file) {
   return validatePlaces(parsed);
 }
 
-module.exports = { loadPlaces, validatePlaces, LABELS };
+module.exports = { loadPlaces, validatePlaces, cleanMenus, LABELS };

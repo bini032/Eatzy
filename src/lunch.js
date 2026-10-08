@@ -105,14 +105,25 @@ async function pickCandidates(state, origin, radius, poolFor) {
 }
 
 function stripWinner(w) {
-  const { id, name, category, address, phone, url, memo, x, y } = w;
-  return { id, name, category, address, phone, url, memo, x, y };
+  const { id, name, category, address, phone, url, memo, menus, x, y } = w;
+  return { id, name, category, address, phone, url, memo, menus, x, y };
+}
+
+// 투표 값: { candidateId, menu } (예전 형식인 가게 id 문자열도 허용)
+function readVote(v) {
+  return typeof v === 'string' ? { candidateId: v, menu: null } : { candidateId: v.candidateId, menu: v.menu || null };
 }
 
 function tally(round) {
   const counts = Object.fromEntries(round.candidates.map((c) => [c.id, 0]));
-  for (const candidateId of Object.values(round.votes)) {
-    if (candidateId in counts) counts[candidateId]++;
+  // 가게별 메뉴 선택 수. 메뉴를 고르지 않은 표는 "" 키로 센다.
+  const menuCounts = Object.fromEntries(round.candidates.map((c) => [c.id, {}]));
+  for (const raw of Object.values(round.votes)) {
+    const { candidateId, menu } = readVote(raw);
+    if (!(candidateId in counts)) continue;
+    counts[candidateId]++;
+    const key = menu || '';
+    menuCounts[candidateId][key] = (menuCounts[candidateId][key] || 0) + 1;
   }
   const max = Math.max(0, ...Object.values(counts));
   const top = max > 0 ? round.candidates.filter((c) => counts[c.id] === max).map((c) => c.id) : [];
@@ -125,6 +136,7 @@ function tally(round) {
   }
   return {
     counts,
+    menuCounts,
     totalVotes: Object.keys(round.votes).length,
     tiedIds: top.length > 1 ? top : [],
     needsDraw: top.length > 1 && leaderId === null,
@@ -136,4 +148,4 @@ function sameSet(a, b) {
   return a.length === b.length && [...a].sort().join('|') === [...b].sort().join('|');
 }
 
-module.exports = { CATEGORIES, pickCandidates, kakaoPool, listPool, tally, distanceMeters, hasCoords, randomItem };
+module.exports = { CATEGORIES, pickCandidates, kakaoPool, listPool, tally, readVote, distanceMeters, hasCoords, randomItem };

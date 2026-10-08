@@ -274,3 +274,65 @@ test('목록 파일 수정은 재시작 없이 반영되고, 형식 오류 항�
     t.close();
   }
 });
+
+const MENU_LIST = [
+  { name: '메뉴한식', category: '한식', menus: ['테스트찌개', '테스트볶음'] },
+  { name: '메뉴중식', category: '중식' },
+  { name: '메뉴양식', category: '양식' },
+  { name: '메뉴분식', category: '분식' },
+];
+
+test('메뉴: 목록의 메뉴로 추천하고, 가게와 메뉴를 함께 투표한다', async () => {
+  const t = await setup({ noKakao: true, places: MENU_LIST });
+  try {
+    const { round } = (await t.call('POST', '/api/rounds', {})).body;
+    const korean = round.candidates.find((c) => c.categoryKey === 'korean');
+    assert.deepEqual(korean.menus, ['테스트찌개', '테스트볶음']);
+    assert.ok(korean.menus.includes(korean.recommendedMenu));
+    const chinese = round.candidates.find((c) => c.categoryKey === 'chinese');
+    assert.deepEqual(chinese.menus, []);
+    assert.equal(chinese.recommendedMenu, null);
+
+    let r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V1, candidateId: korean.id, menu: '테스트찌개' });
+    assert.deepEqual(r.body.round.myVote, { candidateId: korean.id, menu: '테스트찌개' });
+    await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V2, candidateId: korean.id, menu: '테스트찌개' });
+    r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V3, candidateId: korean.id });
+    assert.deepEqual(r.body.round.menuCounts[korean.id], { 테스트찌개: 2, '': 1 });
+    assert.equal(r.body.round.counts[korean.id], 3);
+
+    r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V3, candidateId: korean.id, menu: '없는메뉴' });
+    assert.equal(r.status, 400);
+
+    r = await t.call('POST', `/api/rounds/${round.id}/complete`, { key: 'hs' });
+    assert.deepEqual(r.body.round.winner.menuCounts, { 테스트찌개: 2, '': 1 });
+  } finally {
+    t.close();
+  }
+});
+
+test('메뉴: 관리자가 직접 입력한 메뉴는 키가 필요하고, 다음 투표에도 유지된다', async () => {
+  const t = await setup({ noKakao: true, places: MENU_LIST });
+  try {
+    const { round } = (await t.call('POST', '/api/rounds', {})).body;
+    const chinese = round.candidates.find((c) => c.categoryKey === 'chinese');
+    const url = `/api/rounds/${round.id}/candidates/${chinese.id}/menus`;
+
+    let r = await t.call('POST', url, { key: 'wrong', menus: ['A'] });
+    assert.equal(r.status, 403);
+    r = await t.call('POST', url, { key: 'hs', menus: [' 짜장 ', '짬뽕', '짜장', ''] });
+    assert.equal(r.status, 200);
+    const updated = r.body.round.candidates.find((c) => c.id === chinese.id);
+    assert.deepEqual(updated.menus, ['짜장', '짬뽕']);
+    assert.ok(['짜장', '짬뽕'].includes(updated.recommendedMenu));
+
+    await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V1, candidateId: chinese.id, menu: '짬뽕' });
+    r = await t.call('POST', url, { key: 'hs', menus: ['짜장'] });
+    assert.deepEqual(r.body.round.menuCounts[chinese.id], { '': 1 }, '빠진 메뉴를 고른 표는 메뉴 미정으로');
+
+    // 중식이 하나뿐이므로 다음 투표에도 같은 가게가 나오고, 입력한 메뉴가 유지된다
+    const next = (await t.call('POST', '/api/rounds', { key: 'hs' })).body.round;
+    assert.deepEqual(next.candidates.find((c) => c.id === chinese.id).menus, ['짜장']);
+  } finally {
+    t.close();
+  }
+});

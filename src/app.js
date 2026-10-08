@@ -3,8 +3,8 @@ const crypto = require('crypto');
 const express = require('express');
 const { AppError } = require('./errors');
 const kakao = require('./kakao');
-const { CATEGORIES, pickCandidates, kakaoPool, listPool, tally, randomItem } = require('./lunch');
-const { loadPlaces } = require('./places');
+const { CATEGORIES, pickCandidates, kakaoPool, listPool, tally, readVote, randomItem } = require('./lunch');
+const { loadPlaces, cleanMenus } = require('./places');
 
 const RADIUS_OPTIONS = [300, 500, 1000, 1500, 2000];
 
@@ -12,6 +12,13 @@ function keyMatches(input, expected) {
   const a = crypto.createHash('sha256').update(String(input ?? '')).digest();
   const b = crypto.createHash('sha256').update(String(expected)).digest();
   return crypto.timingSafeEqual(a, b);
+}
+
+function setMenus(candidate, menus) {
+  candidate.menus = menus;
+  if (!menus.includes(candidate.recommendedMenu)) {
+    candidate.recommendedMenu = menus.length ? randomItem(menus) : null;
+  }
 }
 
 function validCoords(x, y) {
@@ -72,12 +79,13 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
       missing: round.missing,
       candidates: round.candidates,
       counts: t.counts,
+      menuCounts: t.menuCounts,
       totalVotes: t.totalVotes,
       tiedIds: t.tiedIds,
       needsDraw: t.needsDraw,
       leaderId: t.leaderId,
       draw: round.draw,
-      myVote: voterId ? round.votes[voterId] || null : null,
+      myVote: voterId && round.votes[voterId] ? readVote(round.votes[voterId]) : null,
       winner: round.winner || null,
       finishedAt: round.finishedAt || null,
     };
@@ -162,6 +170,10 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
           : `반경 ${radius}m 안에서 맛집을 찾지 못했습니다. 반경을 넓히거나 위치를 바꿔 보세요.`
       );
     }
+    // 메뉴: 관리자가 앱에서 입력한 메뉴 > 가게 목록 파일의 메뉴. 메뉴가 있으면 하나를 추천으로 뽑는다.
+    for (const c of candidates) {
+      setMenus(c, s.menus[c.id] || c.menus || []);
+    }
     s.round = {
       id: crypto.randomUUID(),
       status: 'voting',
@@ -183,15 +195,41 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     if (round.status !== 'voting') throw new AppError(409, '이미 결정이 완료된 투표입니다.');
     const voterId = String(req.body?.voterId || '');
     const candidateId = req.body?.candidateId;
+    const menu = req.body?.menu ? String(req.body.menu) : null;
     if (!/^[\w-]{8,64}$/.test(voterId)) throw new AppError(400, '투표자 정보가 올바르지 않습니다.');
     if (candidateId === null) {
       delete round.votes[voterId];
     } else {
-      if (!round.candidates.some((c) => c.id === candidateId)) throw new AppError(400, '후보에 없는 가게입니다.');
-      round.votes[voterId] = candidateId;
+      const candidate = round.candidates.find((c) => c.id === candidateId);
+      if (!candidate) throw new AppError(400, '후보에 없는 가게입니다.');
+      if (menu && !(candidate.menus || []).includes(menu)) throw new AppError(400, '이 가게 메뉴에 없는 항목입니다.');
+      round.votes[voterId] = { candidateId, menu };
     }
     store.save();
     res.json({ round: publicRound(round, voterId) });
+  });
+
+  // 관리자가 후보 가게의 메뉴를 직접 입력/수정. 다음에 같은 가게가 나와도 이 메뉴를 쓴다.
+  app.post('/api/rounds/:id/candidates/:cid/menus', (req, res) => {
+    const round = currentRound(req.params.id);
+    if (!keyMatches(req.body?.key, adminKey)) throw new AppError(403, '관리자 키가 올바르지 않습니다.');
+    if (round.status !== 'voting') throw new AppError(409, '이미 결정이 완료된 투표입니다.');
+    const candidate = round.candidates.find((c) => c.id === req.params.cid);
+    if (!candidate) throw new AppError(404, '후보에 없는 가게입니다.');
+    if (!Array.isArray(req.body?.menus)) throw new AppError(400, '메뉴 목록이 올바르지 않습니다.');
+
+    const menus = cleanMenus(req.body.menus);
+    const s = state();
+    if (menus.length) s.menus[candidate.id] = menus;
+    else delete s.menus[candidate.id];
+    setMenus(candidate, menus);
+    // 목록에서 빠진 메뉴를 고른 표는 가게 투표만 남기고 메뉴는 미정으로 돌린다.
+    for (const [voter, raw] of Object.entries(round.votes)) {
+      const v = readVote(raw);
+      if (v.candidateId === candidate.id && v.menu && !menus.includes(v.menu)) round.votes[voter] = { ...v, menu: null };
+    }
+    store.save();
+    res.json({ round: publicRound(round, req.body?.voterId) });
   });
 
   // 동점일 때 랜덤 뽑기. 같은 동점 상황에서 여러 번 눌러도 결과는 한 번만 정해진다.
@@ -217,7 +255,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
 
     const winner = round.candidates.find((c) => c.id === t.leaderId);
     round.status = 'done';
-    round.winner = { ...winner, votes: t.counts[winner.id], byDraw: t.tiedIds.length > 1 };
+    round.winner = { ...winner, votes: t.counts[winner.id], menuCounts: t.menuCounts[winner.id], byDraw: t.tiedIds.length > 1 };
     round.finishedAt = new Date().toISOString();
 
     const s = state();

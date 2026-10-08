@@ -147,9 +147,46 @@
       ${w.address || w.distance != null ? `<p class="muted">${esc(w.address)}${w.address && w.distance != null ? ' · ' : ''}${w.distance != null ? `약 ${formatDistance(w.distance)}` : ''}</p>` : ''}
       ${w.phone ? `<p>☎ ${esc(w.phone)}</p>` : ''}
       <p>득표 ${w.votes}표 / 총 ${round.totalVotes}표${w.byDraw ? ' · 동점 랜덤 뽑기로 결정' : ''}</p>
+      ${menuSummary(w.menuCounts)}
       ${url ? `<p><a href="${esc(url)}" target="_blank" rel="noopener">지도에서 보기 →</a></p>` : ''}
       <p class="muted small-text">결정 시각 ${formatTime(round.finishedAt)}</p>`;
     el.hidden = false;
+  }
+
+  // 메뉴별 선택 인원: "김치찌개 3명 · 제육볶음 2명 · 메뉴 미정 1명"
+  function menuSummary(menuCounts) {
+    const entries = Object.entries(menuCounts || {}).filter(([, n]) => n > 0);
+    if (!entries.length || (entries.length === 1 && entries[0][0] === '')) return '';
+    entries.sort((a, b) => (a[0] === '') - (b[0] === '') || b[1] - a[1]);
+    const text = entries.map(([m, n]) => `${m ? esc(m) : '메뉴 미정'} ${n}명`).join(' · ');
+    return `<p class="menu-summary">🍽️ ${text}</p>`;
+  }
+
+  function menuBlock(c, round, done) {
+    const menus = c.menus || [];
+    const counts = (round.menuCounts && round.menuCounts[c.id]) || {};
+    const myMenu = round.myVote && round.myVote.candidateId === c.id ? round.myVote.menu : undefined;
+    let html = '';
+    if (menus.length) {
+      const chips = menus
+        .map((m, i) => {
+          const n = counts[m] || 0;
+          const label = `${m === c.recommendedMenu ? '⭐ ' : ''}${esc(m)}${n ? ` · ${n}` : ''}`;
+          return done
+            ? `<span class="chip">${label}</span>`
+            : `<button class="chip${myMenu === m ? ' on' : ''}" data-menu="${i}" data-cid="${esc(c.id)}" type="button">${label}</button>`;
+        })
+        .join('');
+      html += `<div class="menus"><span class="label">${done ? '메뉴 선택 현황' : '메뉴 고르기 (누르면 이 가게에 투표)'}</span><div class="chips">${chips}</div></div>`;
+      if (c.recommendedMenu && !done) html += `<div class="meta">⭐ 오늘의 추천 메뉴: ${esc(c.recommendedMenu)}</div>`;
+      if (done && counts['']) html += `<div class="meta">메뉴 미정 ${counts['']}명</div>`;
+    } else if (!done) {
+      html += '<div class="meta">등록된 메뉴가 없어요.</div>';
+    }
+    if (!done) {
+      html += `<button class="link" data-menu-edit="${esc(c.id)}" type="button">${menus.length ? '메뉴 수정' : '메뉴 직접 입력'} (관리자)</button>`;
+    }
+    return html;
   }
 
   function renderRound() {
@@ -162,7 +199,10 @@
     section.hidden = false;
     const done = round.status === 'done';
     $('roundSection').querySelector('h2').textContent = done ? '투표 결과' : '투표하기';
+    const myCandidate = round.myVote && round.candidates.find((c) => c.id === round.myVote.candidateId);
     $('voteSummary').textContent = `총 ${round.totalVotes}표`;
+    $('myChoice').textContent = myCandidate ? `내 선택: ${myCandidate.name}${round.myVote.menu ? ` / ${round.myVote.menu}` : ' (메뉴 미정)'}` : '';
+    $('myChoice').hidden = !myCandidate;
     $('roundMeta').textContent =
       (round.origin ? `기준: ${round.origin.name} · 반경 ${formatDistance(round.radius)} · ` : '') +
       `${formatTime(round.createdAt)} 시작` +
@@ -172,7 +212,7 @@
     $('candidates').innerHTML = round.candidates
       .map((c) => {
         const count = round.counts[c.id] || 0;
-        const mine = round.myVote === c.id;
+        const mine = Boolean(round.myVote && round.myVote.candidateId === c.id);
         const leader = round.leaderId === c.id;
         const url = safeUrl(c.url);
         return `
@@ -188,10 +228,11 @@
           ${c.address || c.distance != null ? `<div class="meta">${esc(c.address)}${c.address && c.distance != null ? ' · ' : ''}${c.distance != null ? formatDistance(c.distance) : ''}</div>` : ''}
           ${c.phone ? `<div class="meta">☎ ${esc(c.phone)}</div>` : ''}
           ${url ? `<a href="${esc(url)}" target="_blank" rel="noopener">지도에서 보기</a>` : ''}
+          ${menuBlock(c, round, done)}
           <div class="bar"><span style="width:${(count / max) * 100}%"></span></div>
           <div class="vote-row">
             <strong>${count}표</strong>
-            ${done ? '' : `<button class="${mine ? 'primary' : ''} small" data-vote="${esc(c.id)}" type="button">${mine ? '✔ 내 선택 (취소)' : '여기 투표'}</button>`}
+            ${done ? '' : `<button class="${mine ? 'primary' : ''} small" data-vote="${esc(c.id)}" type="button">${mine ? '✔ 내 선택 (취소)' : c.menus && c.menus.length ? '메뉴 미정으로 투표' : '여기 투표'}</button>`}
           </div>
         </article>`;
       })
@@ -373,11 +414,74 @@
     withBusy(async () => {
       const res = await api(`/api/rounds/${round.id}/vote`, {
         method: 'POST',
-        body: { voterId, candidateId: round.myVote === candidateId ? null : candidateId },
+        body: { voterId, candidateId: round.myVote && round.myVote.candidateId === candidateId ? null : candidateId },
       });
       applyRound(res.round);
       showMessage('');
     });
+  });
+
+  // 메뉴 칩: 누르면 그 가게 + 메뉴로 투표. 이미 고른 메뉴를 다시 누르면 메뉴만 해제(가게 투표는 유지).
+  $('candidates').addEventListener('click', (e) => {
+    const chip = e.target.closest('[data-menu]');
+    if (!chip) return;
+    const round = data.round;
+    const c = round.candidates.find((x) => x.id === chip.dataset.cid);
+    const menu = c && c.menus[Number(chip.dataset.menu)];
+    if (!menu) return;
+    const same = round.myVote && round.myVote.candidateId === c.id && round.myVote.menu === menu;
+    withBusy(async () => {
+      const res = await api(`/api/rounds/${round.id}/vote`, {
+        method: 'POST',
+        body: { voterId, candidateId: c.id, menu: same ? null : menu },
+      });
+      applyRound(res.round);
+      showMessage('');
+    });
+  });
+
+  // 관리자 메뉴 입력
+  $('candidates').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-menu-edit]');
+    if (!btn) return;
+    const round = data.round;
+    const c = round.candidates.find((x) => x.id === btn.dataset.menuEdit);
+    if (!c) return;
+    const dialog = $('menuDialog');
+    $('menuTitle').textContent = `${c.name} 메뉴`;
+    $('menuInput').value = (c.menus || []).join('\n');
+    $('menuKey').value = '';
+    $('menuError').hidden = true;
+    dialog.showModal();
+    $('menuInput').focus();
+
+    const form = $('menuForm');
+    const close = () => {
+      form.removeEventListener('submit', submit);
+      $('menuCancel').removeEventListener('click', close);
+      dialog.close();
+    };
+    const submit = async (ev) => {
+      ev.preventDefault();
+      const menus = $('menuInput').value.split(/[\n,]/).map((m) => m.trim()).filter(Boolean);
+      $('menuOk').disabled = true;
+      try {
+        const res = await api(`/api/rounds/${round.id}/candidates/${encodeURIComponent(c.id)}/menus`, {
+          method: 'POST',
+          body: { key: $('menuKey').value, menus, voterId },
+        });
+        applyRound(res.round);
+        close();
+        showMessage(menus.length ? `${c.name} 메뉴 ${menus.length}개를 저장했어요.` : `${c.name} 메뉴를 비웠어요.`);
+      } catch (err) {
+        $('menuError').textContent = err.message;
+        $('menuError').hidden = false;
+      } finally {
+        $('menuOk').disabled = false;
+      }
+    };
+    form.addEventListener('submit', submit);
+    $('menuCancel').addEventListener('click', close);
   });
 
   $('drawBtn').addEventListener('click', () =>
@@ -423,7 +527,7 @@
 
   refresh();
   setInterval(() => {
-    if (!busy && !document.hidden && !$('keyDialog').open) refresh();
+    if (!busy && !document.hidden && !$('keyDialog').open && !$('menuDialog').open) refresh();
   }, POLL_MS);
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) refresh();
