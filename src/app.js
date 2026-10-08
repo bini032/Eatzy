@@ -1,3 +1,4 @@
+const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { AsyncLocalStorage } = require('async_hooks');
@@ -58,9 +59,19 @@ function validCoords(x, y) {
 function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFile }) {
   const app = express();
   app.use(express.json({ limit: '1mb' })); // 가게 목록 일괄 업로드 때문에 넉넉하게
-  app.use(express.static(path.join(__dirname, '..', 'public')));
-  // 그룹 링크(/g/그룹id)도 같은 화면을 쓴다. 화면이 주소에서 그룹 id를 읽어 API에 x-group으로 보낸다
-  app.get('/g/:id', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
+  // 배포 버전: Render가 넣어 주는 커밋 값(없으면 서버 시작 시각). 화면 파일 주소에 붙여 예전 파일이 캐시되지 않게 한다
+  const build = (process.env.RENDER_GIT_COMMIT || '').slice(0, 7) || Date.now().toString(36);
+  const indexHtml = fs
+    .readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8')
+    .replace(/(href|src)="\/(style\.css|i18n\.js|app\.js)"/g, `$1="/$2?v=${build}"`)
+    .replace('{{BUILD}}', build);
+  // 기본 화면과 그룹 링크(/g/그룹id)는 같은 화면을 쓴다. 화면이 주소에서 그룹 id를 읽어 API에 x-group으로 보낸다
+  const sendIndex = (req, res) => {
+    res.set('Cache-Control', 'no-cache');
+    res.type('html').send(indexHtml);
+  };
+  app.get(['/', '/index.html', '/g/:id'], sendIndex);
+  app.use(express.static(path.join(__dirname, '..', 'public'), { index: false }));
 
   // 요청마다 그룹 상태를 고른다. 이후 코드는 state()로 현재 그룹 상태에 접근한다
   const groupCtx = new AsyncLocalStorage();
@@ -285,6 +296,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     const src = placeSource();
     res.json({
       ok: true,
+      build,
       storage: store.redis ? 'Upstash Redis' : '파일 (재시작하면 기록이 사라질 수 있음)',
       placeSource:
         src.origin === 'db' ? '저장된 가게 목록 (DB)' : src.origin === 'file' ? '가게 목록 파일' : src.type === 'kakao' ? '카카오 검색' : '없음 (가게 등록 필요)',

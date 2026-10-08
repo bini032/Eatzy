@@ -950,3 +950,22 @@ test('가게 정보 링크 미리보기: 사이트가 막는지 헤더로 확인
     t.close();
   }
 });
+
+test('화면: 버전이 붙은 주소로 파일을 주고, 화면은 캐시하지 않는다', async () => {
+  const t = await setup({ noKakao: true });
+  try {
+    const res = await realFetch(`${t.base}/`);
+    assert.equal(res.headers.get('cache-control'), 'no-cache');
+    const html = await res.text();
+    const m = html.match(/src="\/app\.js\?v=([\w]+)"/);
+    assert.ok(m, 'app.js에 버전');
+    assert.match(html, new RegExp(`v${m[1]}<`), '하단에 버전 표시');
+    assert.match(html, /href="\/style\.css\?v=/);
+    assert.match(html, /id="userPassword"/, '로그인 창에 비밀번호 칸');
+    const health = (await t.call('GET', '/api/health')).body;
+    assert.equal(health.build, m[1]);
+    assert.equal((await realFetch(`${t.base}/app.js?v=${m[1]}`)).status, 200);
+  } finally {
+    t.close();
+  }
+});
