@@ -1,0 +1,220 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { Store } = require('../src/store');
+const { createApp } = require('../src/app');
+const { poolCache } = require('../src/lunch');
+
+// 테스트용 가짜 카카오 응답 (실제 가게 정보 아님)
+const ORIGIN = { x: 126.98, y: 37.566 };
+function fakePlaces(label, n) {
+  return Array.from({ length: n }, (_, i) => ({
+    id: `${label}-${i}`,
+    place_name: `테스트${label}${i}`,
+    category_name: `음식점 > ${label} > 테스트`,
+    road_address_name: `테스트로 ${i}`,
+    phone: '',
+    place_url: `https://example.com/${label}${i}`,
+    x: String(ORIGIN.x + i * 0.0005),
+    y: String(ORIGIN.y),
+    distance: String(i * 40),
+  }));
+}
+
+const realFetch = global.fetch;
+function installFakeKakao({ counts = { 한식: 3, 중식: 2, 양식: 2, 분식: 2 } } = {}) {
+  const calls = [];
+  global.fetch = async (url, opts) => {
+    const u = new URL(url);
+    if (u.hostname !== 'dapi.kakao.com') return realFetch(url, opts);
+    calls.push(u);
+    const query = u.searchParams.get('query');
+    let documents = [];
+    if (u.pathname.endsWith('coord2address.json')) {
+      documents = [{ road_address: { address_name: '테스트시 테스트로 1' } }];
+    } else if (query === '더존을지타워') {
+      documents = [{ id: 'origin', place_name: '더존을지타워', x: String(ORIGIN.x), y: String(ORIGIN.y), road_address_name: '테스트 주소' }];
+    } else if (query in counts) {
+      documents = Number(u.searchParams.get('page')) === 1 ? fakePlaces(query, counts[query]) : [];
+    }
+    return new Response(JSON.stringify({ documents, meta: { is_end: true } }), { status: 200 });
+  };
+  return calls;
+}
+
+async function setup(opts) {
+  process.env.KAKAO_REST_API_KEY = 'test';
+  poolCache.clear();
+  const calls = installFakeKakao(opts);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'eatzy-'));
+  const store = new Store(path.join(dir, 'state.json'));
+  const app = createApp({ store, adminKey: 'hs', defaultPlaceQuery: '더존을지타워', defaultOrigin: null });
+  const server = await new Promise((resolve) => {
+    const s = app.listen(0, () => resolve(s));
+  });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const call = async (method, p, body) => {
+    const res = await realFetch(base + p, {
+      method,
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return { status: res.status, body: await res.json() };
+  };
+  return { call, store, calls, close: () => server.close() };
+}
+
+test.afterEach(() => {
+  global.fetch = realFetch;
+});
+
+const V1 = 'voter-aaaa-1111';
+const V2 = 'voter-bbbb-2222';
+const V3 = 'voter-cccc-3333';
+
+test('카테고리별로 한 곳씩 후보를 뽑는다', async () => {
+  const t = await setup();
+  try {
+    const r = await t.call('POST', '/api/rounds', {});
+    assert.equal(r.status, 201);
+    assert.deepEqual(r.body.round.candidates.map((c) => c.categoryLabel), ['한식', '중식', '양식', '분식']);
+    assert.equal(t.store.state.settings.origin.name, '더존을지타워');
+  } finally {
+    t.close();
+  }
+});
+
+test('매번 이전에 나오지 않은 곳을 뽑고, 다 돌면 다시 시작한다', async () => {
+  const t = await setup({ counts: { 한식: 3, 중식: 1, 양식: 1, 분식: 1 } });
+  try {
+    const seen = [];
+    for (let i = 0; i < 3; i++) {
+      const r = await t.call('POST', '/api/rounds', {});
+      seen.push(r.body.round.candidates.find((c) => c.categoryKey === 'korean').id);
+    }
+    assert.equal(new Set(seen).size, 3);
+    const r = await t.call('POST', '/api/rounds', {});
+    assert.equal(r.body.round.candidates.length, 4);
+  } finally {
+    t.close();
+  }
+});
+
+test('투표, 동점 랜덤 뽑기, 관리자 키로 완료', async () => {
+  const t = await setup();
+  try {
+    const { round } = (await t.call('POST', '/api/rounds', {})).body;
+    const [a, b] = round.candidates;
+    await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V1, candidateId: a.id });
+    let r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V2, candidateId: b.id });
+    assert.equal(r.body.round.needsDraw, true);
+
+    r = await t.call('POST', `/api/rounds/${round.id}/complete`, { key: 'hs' });
+    assert.equal(r.status, 409, '동점이면 완료 불가');
+
+    r = await t.call('POST', `/api/rounds/${round.id}/draw`, {});
+    const drawn = r.body.round.leaderId;
+    assert.ok([a.id, b.id].includes(drawn));
+    r = await t.call('POST', `/api/rounds/${round.id}/draw`, {});
+    assert.equal(r.body.round.leaderId, drawn, '다시 눌러도 결과 유지');
+
+    r = await t.call('POST', `/api/rounds/${round.id}/complete`, { key: 'wrong' });
+    assert.equal(r.status, 403);
+    r = await t.call('POST', `/api/rounds/${round.id}/complete`, { key: 'hs' });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.round.winner.id, drawn);
+    assert.equal(r.body.round.winner.byDraw, true);
+
+    const s = await t.call('GET', '/api/state');
+    assert.equal(s.body.round.status, 'done');
+    assert.equal(s.body.history[0].winner.id, drawn);
+
+    r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V3, candidateId: a.id });
+    assert.equal(r.status, 409, '완료 후 투표 불가');
+  } finally {
+    t.close();
+  }
+});
+
+test('투표 중 다시 뽑기는 관리자 키 필요, 투표가 바뀌면 동점 결과 무효', async () => {
+  const t = await setup();
+  try {
+    const { round } = (await t.call('POST', '/api/rounds', {})).body;
+    const [a, b] = round.candidates;
+    await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V1, candidateId: a.id });
+    await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V2, candidateId: b.id });
+    await t.call('POST', `/api/rounds/${round.id}/draw`, {});
+    let r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V3, candidateId: a.id });
+    assert.equal(r.body.round.leaderId, a.id);
+    r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V3, candidateId: null });
+    assert.equal(r.body.round.needsDraw, false, '같은 동점 조합이면 이전 뽑기 결과 유지');
+
+    r = await t.call('POST', '/api/rounds', {});
+    assert.equal(r.status, 403);
+    r = await t.call('POST', '/api/rounds', { key: 'hs' });
+    assert.equal(r.status, 201);
+  } finally {
+    t.close();
+  }
+});
+
+test('최종 결정된 가게는 다음 투표에 같은 카테고리로 다시 노출된다', async () => {
+  const t = await setup();
+  try {
+    const { round } = (await t.call('POST', '/api/rounds', {})).body;
+    const chinese = round.candidates.find((c) => c.categoryKey === 'chinese');
+    await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V1, candidateId: chinese.id });
+    await t.call('POST', `/api/rounds/${round.id}/complete`, { key: 'hs' });
+
+    const next = (await t.call('POST', '/api/rounds', {})).body.round;
+    const slot = next.candidates.find((c) => c.categoryKey === 'chinese');
+    assert.equal(slot.id, chinese.id);
+    assert.equal(slot.pinned, true);
+  } finally {
+    t.close();
+  }
+});
+
+test('현재 위치/장소 지정으로 기준 위치를 바꾼다', async () => {
+  const t = await setup();
+  try {
+    let r = await t.call('POST', '/api/location', { mode: 'current', x: 127.0, y: 37.5 });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.settings.origin.source, 'current');
+    assert.equal(r.body.settings.origin.address, '테스트시 테스트로 1');
+
+    r = await t.call('POST', '/api/location', { mode: 'place', name: '테스트역', x: 126.99, y: 37.56, radius: 500 });
+    assert.equal(r.body.settings.origin.name, '테스트역');
+    assert.equal(r.body.settings.radius, 500);
+
+    r = await t.call('POST', '/api/rounds', {});
+    const k = t.calls.find((u) => u.searchParams.get('query') === '한식');
+    assert.equal(k.searchParams.get('x'), '126.99');
+    assert.equal(k.searchParams.get('radius'), '500');
+    assert.equal(r.body.round.origin.name, '테스트역');
+
+    r = await t.call('POST', '/api/location', { mode: 'current', x: 'abc', y: 1 });
+    assert.equal(r.status, 400);
+    r = await t.call('POST', '/api/location', { radius: 12345 });
+    assert.equal(r.status, 400);
+
+    r = await t.call('POST', '/api/location', { mode: 'default' });
+    assert.equal(r.body.settings.origin.name, '더존을지타워');
+  } finally {
+    t.close();
+  }
+});
+
+test('API 키가 없으면 가짜 데이터 대신 명확한 오류를 준다', async () => {
+  const t = await setup();
+  delete process.env.KAKAO_REST_API_KEY;
+  try {
+    const r = await t.call('POST', '/api/rounds', {});
+    assert.equal(r.status, 503);
+    assert.match(r.body.error, /KAKAO_REST_API_KEY/);
+  } finally {
+    t.close();
+  }
+});

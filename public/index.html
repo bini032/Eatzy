@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Eatzy 점심 투표</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍱</text></svg>" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="wrap">
+    <header class="top">
+      <div>
+        <h1>Eatzy</h1>
+        <p class="sub">오늘 점심, 다같이 정해요</p>
+      </div>
+      <button id="shareBtn" class="ghost small" type="button">링크 복사</button>
+    </header>
+
+    <section class="panel" id="locationPanel">
+      <div class="loc-row">
+        <div class="loc-info">
+          <span class="label">기준 위치</span>
+          <strong id="locName">불러오는 중…</strong>
+          <span id="locAddr" class="muted"></span>
+        </div>
+        <label class="radius">
+          <span class="label">반경</span>
+          <select id="radiusSelect"></select>
+        </label>
+      </div>
+      <div class="loc-actions">
+        <button id="locCurrentBtn" class="ghost small" type="button">📍 내 현재 위치로 갱신</button>
+        <button id="locSearchToggle" class="ghost small" type="button">🔎 장소 검색해서 지정</button>
+        <button id="locDefaultBtn" class="ghost small" type="button">🏢 기본 위치</button>
+      </div>
+      <form id="locSearchForm" class="loc-search" hidden>
+        <input id="locSearchInput" type="search" placeholder="예: 을지로입구역, 회사 건물 이름" autocomplete="off" />
+        <button class="small" type="submit">검색</button>
+      </form>
+      <ul id="locResults" class="loc-results" hidden></ul>
+    </section>
+
+    <section id="decision" class="decision" hidden></section>
+
+    <div class="find-row">
+      <button id="findBtn" class="primary" type="button">🍽️ 맛집 찾기 (새 투표 시작)</button>
+    </div>
+
+    <div id="message" class="message" role="status" hidden></div>
+
+    <section id="roundSection" hidden>
+      <div class="round-head">
+        <h2>투표하기</h2>
+        <span id="voteSummary" class="muted"></span>
+      </div>
+      <p id="roundMeta" class="muted small-text"></p>
+      <div id="candidates" class="cards"></div>
+
+      <div id="tieBox" class="tie" hidden>
+        <p id="tieText"></p>
+        <button id="drawBtn" class="primary" type="button">🎲 랜덤 뽑기</button>
+      </div>
+
+      <div class="complete-row">
+        <button id="completeBtn" class="dark" type="button">✅ 완료 (관리자)</button>
+      </div>
+    </section>
+
+    <section id="historySection" hidden>
+      <h2>최근 결정</h2>
+      <ul id="history" class="history"></ul>
+    </section>
+  </main>
+
+  <dialog id="keyDialog">
+    <form method="dialog" id="keyForm">
+      <h3 id="keyTitle">관리자 확인</h3>
+      <p id="keyDesc" class="muted">관리자 키를 입력하세요.</p>
+      <input id="keyInput" type="password" autocomplete="off" required />
+      <p id="keyError" class="error" hidden></p>
+      <div class="dialog-actions">
+        <button value="cancel" formnovalidate class="ghost" type="submit">취소</button>
+        <button id="keyOk" value="ok" class="primary" type="submit">확인</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>

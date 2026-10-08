@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: eatzy
+    runtime: node
+    buildCommand: npm ci --omit=dev
+    startCommand: node server.js
+    envVars:
+      - key: KAKAO_REST_API_KEY
+        sync: false
+      - key: ADMIN_KEY
+        sync: false
+      - key: DEFAULT_PLACE_QUERY
+        value: 더존을지타워
