@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test",
-    "check-places": "node scripts/check-places.js"
+    "check-places": "node scripts/check-places.js",
+    "upload-places": "node scripts/upload-places.js"
   },
   "engines": {
     "node": ">=20.12"

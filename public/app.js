@@ -29,6 +29,7 @@
     if (!res.ok) {
       const err = new Error(json.error || `요청 실패 (${res.status})`);
       err.status = res.status;
+      err.code = json.code;
       throw err;
     }
     return json;
@@ -105,7 +106,7 @@
     const listMode = data.source === 'list';
     if (origin) {
       $('locName').textContent = origin.name;
-      $('locAddr').textContent = origin.address || '';
+      $('locAddr').textContent = (origin.address || '') + (origin.attribution ? ` · ${origin.attribution}` : '');
     } else if (data.kakaoEnabled) {
       $('locName').textContent = `${defaultPlace} (기본, 첫 검색 때 위치 확인)`;
       $('locAddr').textContent = '';
@@ -118,10 +119,10 @@
     if (!data.kakaoEnabled) $('locSearchForm').hidden = $('locResults').hidden = true;
     $('sourceInfo').textContent =
       listMode
-        ? `후보: 등록된 가게 ${data.placesCount}곳에서 뽑기${data.placesErrors ? ` (형식 오류 ${data.placesErrors}건 제외됨)` : ''}`
+        ? `후보: ${data.placesOrigin === 'db' ? '저장된' : '등록된'} 가게 ${data.placesCount}곳에서 뽑기${data.placesErrors ? ` (형식 오류 ${data.placesErrors}건 제외됨)` : ''}`
         : data.source === 'kakao'
           ? '후보: 카카오맵 실시간 검색'
-          : '후보로 쓸 가게가 아직 없습니다. 관리자가 restaurants.json에 가게를 등록해야 합니다.';
+          : '후보로 쓸 가게가 아직 없습니다. 관리자가 아래 "가게 관리"에서 가게를 등록해야 합니다.';
 
     const sel = $('radiusSelect');
     if (sel.options.length !== radiusOptions.length) {
@@ -173,7 +174,7 @@
           const n = counts[m] || 0;
           const label = `${esc(m)}${n ? ` · ${n}` : ''}`;
           return done
-            ? `<span class="chip">${label}</span>`
+            ? `<button class="chip" data-closed type="button">${label}</button>`
             : `<button class="chip${myMenu === m ? ' on' : ''}" data-menu="${i}" data-cid="${esc(c.id)}" type="button">${label}</button>`;
         })
         .join('');
@@ -233,7 +234,7 @@
           <div class="card-top">
             <span class="badge cat">${esc(c.categoryLabel)}</span>
             ${c.pinned ? '<span class="badge pin">지난 투표 1위</span>' : ''}
-            ${leader ? `<span class="badge">${done ? '최종 선택' : '현재 1위'}</span>` : ''}
+            ${leader ? `<span class="badge lead">${done ? '최종 선택' : '현재 1위'}</span>` : ''}
           </div>
           <h3>${esc(c.name)}</h3>
           ${c.category && c.category !== c.categoryLabel ? `<div class="meta">${esc(c.category)}</div>` : ''}
@@ -245,7 +246,7 @@
           <div class="bar"><span style="width:${(count / max) * 100}%"></span></div>
           <div class="vote-row">
             <strong>${count}표</strong>
-            ${done ? '' : `<button class="${mine ? 'primary' : ''} small" data-vote="${esc(c.id)}" type="button">${mine ? '✔ 내 선택 (취소)' : c.menus && c.menus.length ? '메뉴 미정으로 투표' : '여기 투표'}</button>`}
+            ${done ? '<button class="small" data-closed type="button">투표 마감</button>' : `<button class="${mine ? 'primary' : ''} small" data-vote="${esc(c.id)}" type="button">${mine ? '✔ 내 선택 (취소)' : c.menus && c.menus.length ? '메뉴 미정으로 투표' : '여기 투표'}</button>`}
           </div>
         </article>`;
       })
@@ -311,13 +312,24 @@
     render();
   }
 
+  // 완료된 투표에 투표/메뉴 추가 등을 시도했을 때 안내 창
+  function showClosed() {
+    $('noticeDialog').showModal();
+    refresh();
+  }
+  $('noticeOk').addEventListener('click', () => $('noticeDialog').close());
+  $('candidates').addEventListener('click', (e) => {
+    if (e.target.closest('[data-closed]')) showClosed();
+  });
+
   async function withBusy(fn) {
     if (busy) return;
     busy = true;
     try {
       await fn();
     } catch (err) {
-      showMessage(err.message, true);
+      if (err.code === 'closed') showClosed();
+      else showMessage(err.message, true);
     } finally {
       busy = false;
     }
@@ -417,7 +429,11 @@
       } catch (err) {
         if (err.status !== 403) throw err;
         showMessage('');
-        askKey('후보 다시 뽑기', '이미 투표가 진행 중이라 다시 뽑으면 현재 투표가 사라집니다. 관리자 키를 입력하세요.', async (key) => {
+        const desc =
+          err.code === 'closed'
+            ? '투표가 완료되었습니다! 담당자에게 직접 문의해주세요. 관리자라면 키를 입력해 새 투표를 시작할 수 있습니다.'
+            : '이미 투표가 진행 중이라 다시 뽑으면 현재 투표가 사라집니다. 관리자 키를 입력하세요.';
+        askKey(err.code === 'closed' ? '새 투표 시작 (관리자)' : '후보 다시 뽑기', desc, async (key) => {
           try {
             await startRound(key);
             return null;
@@ -567,6 +583,125 @@
       showMessage('링크를 복사했어요. 팀원들에게 공유하세요!');
     } catch {
       showMessage(`이 링크를 공유하세요: ${url}`);
+    }
+  });
+
+  // ---------- 가게 관리 (관리자) ----------
+  let adminKey = null;
+
+  async function adminApi(path, options = {}) {
+    const res = await fetch(path, {
+      method: options.method || 'GET',
+      headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey || '' },
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json.error || `요청 실패 (${res.status})`);
+    return json;
+  }
+
+  function adminShowError(text) {
+    $('adminError').textContent = text || '';
+    $('adminError').hidden = !text;
+  }
+
+  function renderAdmin(places) {
+    $('adminCount').textContent = String(places.length);
+    const labels = ['한식', '중식', '양식', '분식'];
+    $('adminList').innerHTML = places.length
+      ? labels
+          .map((label) => {
+            const rows = places.filter((p) => p.category === label);
+            if (!rows.length) return `<div class="admin-group"><h4>${label} · 0곳 (이 카테고리는 후보에 나오지 않아요)</h4></div>`;
+            return `<div class="admin-group"><h4>${label} · ${rows.length}곳</h4>${rows
+              .map(
+                (p) => `
+              <div class="admin-row">
+                <div class="info">
+                  <strong>${esc(p.name)}</strong>
+                  <small>${[p.address, p.menus.length ? `메뉴 ${p.menus.length}개: ${p.menus.slice(0, 5).join(', ')}${p.menus.length > 5 ? '…' : ''}` : '메뉴 없음'].filter(Boolean).map(esc).join(' · ')}</small>
+                </div>
+                <button class="small danger" data-del="${esc(p.id)}" data-name="${esc(p.name)}" type="button">삭제</button>
+              </div>`
+              )
+              .join('')}</div>`;
+          })
+          .join('')
+      : '<p class="muted small-text">아직 저장된 가게가 없어요.</p>';
+  }
+
+  async function adminAfterChange(places, msg) {
+    renderAdmin(places);
+    adminShowError('');
+    if (msg) showMessage(msg);
+    await refresh();
+  }
+
+  $('adminLogin').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    adminKey = $('adminKeyInput').value;
+    try {
+      const { places } = await adminApi('/api/admin/places');
+      $('adminLogin').hidden = true;
+      $('adminBody').hidden = false;
+      adminShowError('');
+      renderAdmin(places);
+    } catch (err) {
+      adminKey = null;
+      adminShowError(err.message);
+    }
+  });
+
+  $('adminAddForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const place = {
+      name: f.name.value.trim(),
+      category: f.category.value,
+      address: f.address.value.trim(),
+      url: f.url.value.trim(),
+      menus: f.menus.value.split(',').map((m) => m.trim()).filter(Boolean),
+    };
+    try {
+      const res = await adminApi('/api/admin/places', { method: 'POST', body: { mode: 'merge', places: [place] } });
+      f.reset();
+      await adminAfterChange(res.places, `"${place.name}"을(를) 저장했어요.`);
+    } catch (err) {
+      adminShowError(err.message);
+    }
+  });
+
+  $('adminImportBtn').addEventListener('click', async () => {
+    let list;
+    try {
+      list = JSON.parse($('adminImport').value);
+    } catch {
+      adminShowError('JSON 형식이 올바르지 않습니다. [ { "name": ..., "category": ... } ] 형태로 붙여넣어 주세요.');
+      return;
+    }
+    const replace = $('adminReplace').checked;
+    if (replace && !confirm('기존에 저장된 가게 목록을 모두 지우고 교체할까요?')) return;
+    try {
+      const res = await adminApi('/api/admin/places', { method: 'POST', body: { mode: replace ? 'replace' : 'merge', places: list } });
+      $('adminImport').value = '';
+      $('adminReplace').checked = false;
+      await adminAfterChange(
+        res.places,
+        `${res.saved}곳을 저장했어요.${res.errors.length ? ` 형식 오류로 ${res.errors.length}곳은 제외했어요.` : ''}`
+      );
+    } catch (err) {
+      adminShowError(err.message);
+    }
+  });
+
+  $('adminList').addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-del]');
+    if (!btn || !confirm(`"${btn.dataset.name}"을(를) 목록에서 삭제할까요?`)) return;
+    try {
+      const res = await adminApi(`/api/admin/places/${encodeURIComponent(btn.dataset.del)}`, { method: 'DELETE' });
+      await adminAfterChange(res.places, `"${btn.dataset.name}"을(를) 삭제했어요.`);
+    } catch (err) {
+      adminShowError(err.message);
     }
   });
 

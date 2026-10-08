@@ -16,17 +16,38 @@
   - 추가하거나 편집한 메뉴는 저장되어, 다음에 같은 가게가 나와도 그대로 나옵니다.
   - 결과 화면에 메뉴별 선택 인원("김치찌개 3명 · 제육볶음 2명")이 표시됩니다.
 - **완료 (관리자)**: 관리자 키를 입력해야 확정됩니다(기본값 `hs`, 환경변수 `ADMIN_KEY`로 변경 가능). 키는 서버에서만 검증합니다. 확정되면 모든 사용자 화면에 결정된 가게가 표시됩니다.
+- **완료 후**: 누군가 투표, 메뉴 선택 같은 버튼을 누르면 "투표가 완료되었습니다! 담당자에게 직접 문의해주세요." 안내 창이 뜹니다. 그날 완료된 결과를 새 투표로 넘기려면 관리자 키가 필요하고, 다음 날부터는 누구나 새 투표를 시작할 수 있습니다(한국 시간 기준).
 - 투표가 진행 중인데(1표 이상) 후보를 다시 뽑으려면 관리자 키가 필요합니다.
 - **기준 위치**: 📍 내 현재 위치(HTTPS 또는 localhost에서만 동작), 🔎 장소 검색(카카오 키가 있을 때만), 기본 위치. 반경은 300m부터 2km까지 고를 수 있습니다.
+  - 현재 위치의 건물 이름과 주소는 카카오 키가 있으면 카카오, 없으면 OpenStreetMap(Nominatim)에서 가져옵니다. OpenStreetMap에 건물 이름이 없는 곳은 동네 이름이나 주소만 나올 수 있습니다.
+- **가게 관리 (관리자)**: 화면 맨 아래에서 관리자 키를 넣고 저장된 가게 목록을 보고, 추가하거나 삭제하고, JSON을 붙여넣어 한꺼번에 올릴 수 있습니다.
 
-## 가게 후보를 가져오는 두 가지 방식
+## 가게 후보를 가져오는 방식
 
 앱은 아래 순서로 후보 출처를 정합니다.
 
-1. **가게 목록 파일 `restaurants.json`**에 가게가 있으면 그 목록에서 뽑습니다. 카카오 키가 필요 없습니다.
-2. 목록이 비어 있고 `KAKAO_REST_API_KEY`가 있으면, 기준 위치 반경 안의 음식점을 **카카오맵에서 실시간으로 검색**합니다.
+1. **저장된 가게 목록(DB)**: PC의 Claude Code에서 `npm run upload-places`로 올리거나, 화면의 "가게 관리"에서 추가한 목록입니다. Upstash를 쓰면 서버가 재시작돼도 유지됩니다.
+2. **가게 목록 파일 `restaurants.json`**: 저장된 목록이 비어 있을 때 사용합니다.
+3. **카카오맵 실시간 검색**: 위 두 가지가 모두 비어 있고 `KAKAO_REST_API_KEY`가 있을 때 기준 위치 반경 안에서 검색합니다.
 
-둘 다 없으면 앱은 가짜 가게를 만들어 내지 않고, 가게를 등록하라는 안내를 표시합니다.
+셋 다 없으면 앱은 가짜 가게를 만들어 내지 않고, 가게를 등록하라는 안내를 표시합니다.
+
+### PC의 Claude Code로 목록 만들어 올리기
+
+웹 페이지가 PC의 CLI를 직접 실행할 수는 없으므로, CLI가 만든 목록을 앱으로 올리는 방식입니다.
+
+1. PC의 프로젝트 폴더에 `.env`를 만들고 아래 두 줄을 넣습니다.
+   ```
+   EATZY_URL=https://eatzy-xxxx.onrender.com
+   ADMIN_KEY=hs
+   ```
+2. Claude Code에게 가게 후보를 찾아 달라고 하고, 고른 가게를 `restaurants.json`에 저장합니다(`CLAUDE.md`에 규칙이 있습니다).
+3. 업로드합니다.
+   ```bash
+   npm run upload-places              # 기존 목록에 병합 (같은 이름+주소면 덮어씀)
+   npm run upload-places -- --replace # 기존 목록을 지우고 교체
+   ```
+4. 팀원들이 "맛집 찾기"를 누르면 올린 목록에서 후보가 뽑힙니다.
 
 ### 가게 목록 파일 형식
 
@@ -118,6 +139,7 @@ npm test           # 자동 테스트 (외부 API는 가짜 응답으로 대체)
 | `KAKAO_REST_API_KEY` | 카카오 REST API 키 (목록이 비어 있을 때 실시간 검색에 사용) | 없음 |
 | `DEFAULT_PLACE_QUERY` | 기본 위치 이름 (카카오 키가 있으면 이 이름으로 좌표를 검색) | `더존을지타워` |
 | `DEFAULT_ORIGIN_X`, `DEFAULT_ORIGIN_Y` | 기본 위치 좌표를 직접 고정 (경도, 위도) | 없음 |
+| `EATZY_URL` | `npm run upload-places`가 올릴 배포 주소 (PC에서만 사용) | 없음 |
 | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | 설정하면 파일 대신 Upstash Redis에 저장 | 없음 |
 | `REDIS_KEY` | Upstash에 저장할 키 이름 | `eatzy:state` |
 | `DATA_DIR` | 투표 데이터(JSON) 저장 폴더 (Upstash 미사용 시) | `./data` |
@@ -134,6 +156,8 @@ src/places.js            가게 목록 읽기와 검사
 src/kakao.js             카카오 로컬 API 호출
 src/store.js             저장소 (JSON 파일 또는 Upstash Redis)
 scripts/check-places.js  가게 목록 검사 (npm run check-places)
+scripts/upload-places.js 가게 목록을 배포된 앱 DB에 업로드 (npm run upload-places)
+src/geocode.js           좌표 -> 위치 이름/주소 (카카오 또는 OpenStreetMap)
 public/                  화면 (HTML/CSS/JS, 빌드 없음)
 test/                    테스트
 ```

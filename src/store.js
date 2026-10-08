@@ -9,6 +9,7 @@ function defaultState() {
     },
     round: null,
     lastWinner: null,
+    places: [], // CLI 업로드나 관리자 화면으로 저장한 가게 목록 (있으면 restaurants.json보다 우선)
     menus: {}, // 관리자가 앱에서 입력한 가게별 메뉴 { [가게id]: ["메뉴", ...] }
     history: [],
     recent: {},

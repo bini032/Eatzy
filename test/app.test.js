@@ -27,6 +27,12 @@ function installFakeKakao({ counts = { 한식: 3, 중식: 2, 양식: 2, 분식: 
   const calls = [];
   global.fetch = async (url, opts) => {
     const u = new URL(url);
+    if (u.hostname === 'nominatim.openstreetmap.org') {
+      calls.push(u);
+      return new Response(
+        JSON.stringify({ name: '테스트빌딩', address: { city: '테스트시', borough: '테스트구', road: '테스트로', house_number: '9', quarter: '테스트동' } })
+      );
+    }
     if (u.hostname !== 'dapi.kakao.com') return realFetch(url, opts);
     calls.push(u);
     const query = u.searchParams.get('query');
@@ -64,7 +70,7 @@ async function setup(opts = {}) {
     });
     return { status: res.status, body: await res.json() };
   };
-  return { call, store, calls, placesFile, close: () => server.close() };
+  return { call, store, calls, placesFile, base, close: () => server.close() };
 }
 
 test.afterEach(() => {
@@ -169,7 +175,7 @@ test('최종 결정된 가게는 다음 투표에 같은 카테고리로 다시 
     await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V1, candidateId: chinese.id });
     await t.call('POST', `/api/rounds/${round.id}/complete`, { key: 'hs' });
 
-    const next = (await t.call('POST', '/api/rounds', {})).body.round;
+    const next = (await t.call('POST', '/api/rounds', { key: 'hs' })).body.round;
     const slot = next.candidates.find((c) => c.categoryKey === 'chinese');
     assert.equal(slot.id, chinese.id);
     assert.equal(slot.pinned, true);
@@ -403,7 +409,96 @@ test('/api/health: 저장소와 가게 목록 상태를 알려 준다', async ()
     assert.equal(r.status, 200);
     assert.equal(r.body.placesCount, 5);
     assert.match(r.body.storage, /파일/);
-    assert.equal(r.body.placeSource, '가게 목록');
+    assert.equal(r.body.placeSource, '가게 목록 파일');
+  } finally {
+    t.close();
+  }
+});
+
+test('현재 위치: 카카오 키가 없으면 OpenStreetMap으로 위치 이름과 주소를 가져온다', async () => {
+  const t = await setup({ noKakao: true, places: LIST });
+  try {
+    const r = await t.call('POST', '/api/location', { mode: 'current', x: 126.98, y: 37.566 });
+    assert.equal(r.body.settings.origin.name, '테스트빌딩 (내 위치)');
+    assert.equal(r.body.settings.origin.address, '테스트시 테스트구 테스트로 9');
+    assert.match(r.body.settings.origin.attribution, /OpenStreetMap/);
+    const q = t.calls.find((u) => u.hostname === 'nominatim.openstreetmap.org');
+    assert.equal(q.searchParams.get('lat'), '37.566');
+    assert.equal(q.searchParams.get('accept-language'), 'ko');
+  } finally {
+    t.close();
+  }
+});
+
+test('가게 목록 DB: 관리자 키로 업로드/병합/삭제하고, 저장된 목록이 파일보다 우선한다', async () => {
+  const t = await setup({ noKakao: true, places: LIST });
+  try {
+    const up = (body, key = 'hs') =>
+      realFetch(`${t.base}/api/admin/places`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': key },
+        body: JSON.stringify(body),
+      }).then(async (res) => ({ status: res.status, body: await res.json() }));
+
+    let r = await up({ places: [{ name: 'DB한식', category: '한식' }] }, 'wrong');
+    assert.equal(r.status, 403);
+
+    r = await up({ places: [{ name: 'DB한식', category: '한식', menus: ['테스트국밥'] }, { name: '오류', category: '일식' }] });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.saved, 1);
+    assert.equal(r.body.errors.length, 1);
+
+    let s = await t.call('GET', '/api/state');
+    assert.equal(s.body.placesOrigin, 'db');
+    assert.equal(s.body.placesCount, 1);
+
+    // merge: 같은 가게는 덮어쓰고 새 가게는 추가
+    r = await up({ places: [{ name: 'DB한식', category: '한식', memo: '수정됨' }, { name: 'DB중식', category: '중식' }] });
+    assert.equal(r.body.total, 2);
+    assert.equal(r.body.places.find((p) => p.name === 'DB한식').memo, '수정됨');
+
+    const round = (await t.call('POST', '/api/rounds', {})).body.round;
+    assert.deepEqual(round.candidates.map((c) => c.name).sort(), ['DB중식', 'DB한식']);
+    assert.deepEqual(round.missing, ['양식', '분식']);
+
+    // replace
+    r = await up({ mode: 'replace', places: [{ name: 'DB분식', category: '분식' }] });
+    assert.equal(r.body.total, 1);
+
+    const id = r.body.places[0].id;
+    const del = await realFetch(`${t.base}/api/admin/places/${id}`, { method: 'DELETE', headers: { 'x-admin-key': 'hs' } });
+    assert.equal(del.status, 200);
+    s = await t.call('GET', '/api/state');
+    assert.equal(s.body.placesOrigin, 'file', '저장 목록이 비면 파일 목록으로 돌아감');
+  } finally {
+    t.close();
+  }
+});
+
+test('완료 후: 투표/메뉴 추가는 완료 안내를, 오늘 새 투표는 관리자 키를 요구한다', async () => {
+  const t = await setup({ noKakao: true, places: MENU_LIST });
+  try {
+    const { round } = (await t.call('POST', '/api/rounds', {})).body;
+    const korean = round.candidates.find((c) => c.categoryKey === 'korean');
+    await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V1, candidateId: korean.id, menu: '테스트찌개' });
+    await t.call('POST', `/api/rounds/${round.id}/complete`, { key: 'hs' });
+
+    for (const [p, body] of [
+      [`/api/rounds/${round.id}/vote`, { voterId: V2, candidateId: korean.id }],
+      [`/api/rounds/${round.id}/candidates/${korean.id}/menu-items`, { voterId: V2, menu: '새메뉴' }],
+      [`/api/rounds/${round.id}/draw`, {}],
+    ]) {
+      const r = await t.call('POST', p, body);
+      assert.equal(r.status, 409, p);
+      assert.equal(r.body.code, 'closed');
+      assert.equal(r.body.error, '투표가 완료되었습니다! 담당자에게 직접 문의해주세요.');
+    }
+
+    let r = await t.call('POST', '/api/rounds', {});
+    assert.equal(r.status, 403);
+    assert.equal(r.body.code, 'closed');
+    r = await t.call('POST', '/api/rounds', { key: 'hs' });
+    assert.equal(r.status, 201);
   } finally {
     t.close();
   }
