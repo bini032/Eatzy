@@ -531,3 +531,42 @@ test('네이버 장소 번호: 링크에서 번호를 뽑고, 저장 목록이 �
     t.close();
   }
 });
+
+test('월간 통계: 결정 횟수, 가게/카테고리/메뉴 랭킹을 한국 시간 월 기준으로 집계한다', async () => {
+  const t = await setup({ noKakao: true, places: MENU_LIST });
+  try {
+    // 두 번 투표를 진행해 기록을 만든다
+    for (let i = 0; i < 2; i++) {
+      const { round } = (await t.call('POST', '/api/rounds', { key: 'hs' })).body;
+      const korean = round.candidates.find((c) => c.categoryKey === 'korean');
+      const chinese = round.candidates.find((c) => c.categoryKey === 'chinese');
+      await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V1, candidateId: korean.id, menu: '테스트찌개' });
+      await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V2, candidateId: korean.id, menu: '테스트찌개' });
+      await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V3, candidateId: chinese.id });
+      await t.call('POST', `/api/rounds/${round.id}/complete`, { key: 'hs' });
+    }
+    // 예전 형식 기록(후보 정보 없음)도 섞여 있을 수 있다
+    t.store.state.history.unshift({ roundId: 'old', decidedAt: '2020-01-15T03:00:00Z', winner: { id: 'x', name: '옛가게', categoryLabel: '분식', votes: 2 }, totalVotes: 3 });
+
+    const r = await t.call('GET', '/api/stats');
+    assert.equal(r.status, 200);
+    assert.equal(r.body.summary.decisions, 2);
+    assert.equal(r.body.summary.totalVotes, 6);
+    assert.equal(r.body.summary.avgVoters, 3);
+    assert.equal(r.body.summary.topRestaurant, '메뉴한식');
+    assert.deepEqual(r.body.restaurants.map((x) => [x.name, x.count, x.votes]), [['메뉴한식', 2, 4]]);
+    assert.equal(r.body.categories.find((c) => c.label === '한식').count, 2);
+    assert.deepEqual(r.body.menus.map((m) => [m.name, m.count]), [['테스트찌개', 4]]);
+    assert.equal(r.body.popularCandidates.find((x) => x.name === '메뉴중식').count, 2);
+    assert.ok(r.body.months.includes('2020-01'));
+
+    const old = await t.call('GET', '/api/stats?month=2020-01');
+    assert.equal(old.body.summary.decisions, 1);
+    assert.equal(old.body.restaurants[0].name, '옛가게');
+
+    const all = await t.call('GET', '/api/stats?month=all');
+    assert.equal(all.body.summary.decisions, 3);
+  } finally {
+    t.close();
+  }
+});

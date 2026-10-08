@@ -75,6 +75,36 @@
       <ul id="history" class="history"></ul>
     </section>
 
+    <section id="statsSection" class="stats">
+      <div class="stats-head">
+        <h2>📊 통계</h2>
+        <select id="statsMonth" aria-label="통계 기간"></select>
+      </div>
+      <div id="statsTiles" class="tiles"></div>
+      <div class="stats-grid">
+        <div class="panel">
+          <h3>가게 랭킹</h3>
+          <p class="muted small-text">점심으로 결정된 횟수</p>
+          <ol id="statsRestaurants" class="rank"></ol>
+        </div>
+        <div class="panel">
+          <h3>인기 메뉴</h3>
+          <p class="muted small-text">결정된 가게에서 고른 메뉴 (명)</p>
+          <ol id="statsMenus" class="rank"></ol>
+        </div>
+        <div class="panel">
+          <h3>카테고리별 결정</h3>
+          <p class="muted small-text">한식·중식·양식·분식 결정 횟수</p>
+          <ol id="statsCategories" class="rank"></ol>
+        </div>
+        <div class="panel">
+          <h3>표를 많이 받은 후보</h3>
+          <p class="muted small-text">후보로 나와 받은 표 수 (결정 안 된 가게 포함)</p>
+          <ol id="statsVotes" class="rank"></ol>
+        </div>
+      </div>
+    </section>
+
     <section class="panel admin" id="adminSection">
       <details id="adminDetails">
         <summary>🔧 가게 관리 (관리자)</summary>

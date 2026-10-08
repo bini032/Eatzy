@@ -6,6 +6,7 @@ const kakao = require('./kakao');
 const { CATEGORIES, pickCandidates, kakaoPool, listPool, tally, readVote, randomItem } = require('./lunch');
 const { loadPlaces, validatePlaces, cleanMenus } = require('./places');
 const { reverseGeocode } = require('./geocode');
+const { buildStats, kstMonth } = require('./stats');
 
 const RADIUS_OPTIONS = [300, 500, 1000, 1500, 2000];
 const CLOSED_MESSAGE = '투표가 완료되었습니다! 담당자에게 직접 문의해주세요.';
@@ -147,6 +148,13 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
       lastWinner: s.lastWinner,
       history: s.history.slice(-10).reverse(),
     });
+  });
+
+  // 월간 통계: ?month=YYYY-MM (한국 시간) 또는 all. 기본은 이번 달
+  app.get('/api/stats', (req, res) => {
+    const q = String(req.query.month || '');
+    const month = q === 'all' || /^\d{4}-\d{2}$/.test(q) ? q : kstMonth(Date.now());
+    res.json(buildStats(state().history || [], month, CATEGORIES));
   });
 
   // 위치 지정: 기본 위치(더존을지타워), 브라우저 현재 위치 좌표, 장소 검색 결과
@@ -371,8 +379,16 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
 
     const s = state();
     s.lastWinner = { ...winner, decidedAt: round.finishedAt };
-    s.history.push({ roundId: round.id, decidedAt: round.finishedAt, winner: round.winner, totalVotes: t.totalVotes });
-    if (s.history.length > 100) s.history = s.history.slice(-100);
+    s.history.push({
+      roundId: round.id,
+      decidedAt: round.finishedAt,
+      winner: round.winner,
+      totalVotes: t.totalVotes,
+      // 통계용: 후보별 득표
+      candidates: round.candidates.map((c) => ({ id: c.id, name: c.name, categoryLabel: c.categoryLabel, votes: t.counts[c.id] || 0 })),
+    });
+    // 약 2년치 보관 (하루 1회 기준)
+    if (s.history.length > 730) s.history = s.history.slice(-730);
     store.save();
     res.json({ round: publicRound(round, req.body?.voterId) });
   });

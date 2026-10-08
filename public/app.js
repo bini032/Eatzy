@@ -326,6 +326,11 @@
     try {
       data = await api(`/api/state?voter=${encodeURIComponent(voterId)}`);
       render();
+      const key = (data.history && data.history[0] && data.history[0].roundId) || '';
+      if (key !== statsKey) {
+        statsKey = key;
+        loadStats();
+      }
     } catch (err) {
       showMessage(err.message, true);
     }
@@ -608,6 +613,68 @@
     } catch {
       showMessage(`이 링크를 공유하세요: ${url}`);
     }
+  });
+
+  // ---------- 통계 ----------
+  let statsMonth = '';
+  let statsKey = null; // 마지막 결정 기록이 바뀌면 통계를 다시 불러온다
+
+  function monthLabel(m) {
+    if (m === 'all') return '전체 기간';
+    const [y, mo] = m.split('-');
+    return `${y}년 ${Number(mo)}월`;
+  }
+
+  function rankList(el, rows, unit, sub) {
+    if (!rows.length) {
+      el.innerHTML = '<li class="rank-empty">아직 기록이 없어요.</li>';
+      return;
+    }
+    const max = Math.max(...rows.map((r) => r.count), 1);
+    el.innerHTML = rows
+      .map(
+        (r, i) => `
+        <li title="${esc(r.name)} ${r.count}${unit}">
+          <span class="rank-no">${i + 1}</span>
+          <div class="rank-body">
+            <div class="rank-label"><span>${esc(r.name)}${sub && sub(r) ? `<small>${esc(sub(r))}</small>` : ''}</span><strong>${r.count}${unit}</strong></div>
+            <div class="rank-bar"><span style="width:${r.count ? Math.max((r.count / max) * 100, 2) : 0}%"></span></div>
+          </div>
+        </li>`
+      )
+      .join('');
+  }
+
+  async function loadStats() {
+    try {
+      const st = await api(`/api/stats${statsMonth ? `?month=${encodeURIComponent(statsMonth)}` : ''}`);
+      statsMonth = st.month;
+      const sel = $('statsMonth');
+      sel.innerHTML = [...st.months, 'all'].map((m) => `<option value="${m}">${monthLabel(m)}</option>`).join('');
+      sel.value = st.month;
+
+      const s = st.summary;
+      $('statsTiles').innerHTML = [
+        ['점심 결정', `${s.decisions}회`],
+        ['총 투표', `${s.totalVotes}표`],
+        ['평균 참여', `${s.avgVoters}명`],
+        ['최다 결정 가게', s.topRestaurant || '-', true],
+      ]
+        .map(([label, value, text]) => `<div class="tile"><span class="label">${label}</span><strong class="${text ? 'text' : ''}" title="${esc(value)}">${esc(value)}</strong></div>`)
+        .join('');
+
+      rankList($('statsRestaurants'), st.restaurants, '회', (r) => r.category);
+      rankList($('statsMenus'), st.menus, '명', (r) => r.restaurant);
+      rankList($('statsCategories'), st.categories.map((c) => ({ name: c.label, count: c.count })), '회');
+      rankList($('statsVotes'), st.popularCandidates, '표', (r) => r.category);
+    } catch (err) {
+      $('statsTiles').innerHTML = `<p class="error">통계를 불러오지 못했어요: ${esc(err.message)}</p>`;
+    }
+  }
+
+  $('statsMonth').addEventListener('change', (e) => {
+    statsMonth = e.target.value;
+    loadStats();
   });
 
   // ---------- 가게 관리 (관리자) ----------
