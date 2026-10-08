@@ -11,6 +11,7 @@ const { buildStats, kstMonth } = require('./stats');
 const { estimateTotal } = require('./price');
 const { translate, pickLang } = require('./i18n');
 const { defaultState } = require('./store');
+const { cleanName, userIdFor } = require('./users');
 
 const MAX_GROUPS = 200;
 const sha256 = (v) => crypto.createHash('sha256').update(String(v)).digest('hex');
@@ -18,11 +19,6 @@ const sha256 = (v) => crypto.createHash('sha256').update(String(v)).digest('hex'
 const MAX_MENUS_PER_VOTE = 10;
 const MAX_MANUAL_CANDIDATES = 12;
 const ADMIN_NAME = 'sb'; // 이 이름(대소문자 무관)은 관리자 전용
-const MAX_NAME_LENGTH = 20;
-
-function cleanName(value) {
-  return String(value || '').trim().replace(/\s+/g, ' ').slice(0, MAX_NAME_LENGTH);
-}
 
 // { voterId: { menus } } -> { 메뉴: 개수 }
 function countOrders(orders) {
@@ -75,6 +71,23 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     return Boolean(meta && meta.adminTokenHash && key && keyMatches(sha256(key), meta.adminTokenHash));
   }
 
+  // 계정 등록/로그인: 이름이 곧 ID다(비밀번호 없음). 같은 이름이면 같은 계정으로 들어간다.
+  // 관리자 이름(SB)은 전체 관리자 키가 있어야 한다. 화면은 받은 계정을 브라우저에 기억해 다음에 그대로 쓴다.
+  app.post('/api/users', (req, res) => {
+    const name = cleanName(req.body?.name);
+    if (!name) throw new AppError(400, '이름을 입력해 주세요.');
+    if (name.toLowerCase() === ADMIN_NAME && !keyMatches(req.body?.key, adminKey)) {
+      throw new AppError(403, 'SB는 관리자 전용 이름입니다. 관리자 키를 입력해 주세요.');
+    }
+    const id = userIdFor(name);
+    const users = store.state.users;
+    const now = new Date().toISOString();
+    const existing = users[id];
+    users[id] = existing ? { ...existing, lastSeenAt: now } : { name, createdAt: now, lastSeenAt: now };
+    store.save();
+    res.status(existing ? 200 : 201).json({ user: { id, name: users[id].name }, isNew: !existing });
+  });
+
   // 새 그룹 만들기: 만든 사람이 받은 관리자 키로 그 그룹을 관리한다 (그룹 미들웨어보다 먼저)
   app.post('/api/groups', (req, res) => {
     const name = String(req.body?.name || '').trim().replace(/\s+/g, ' ').slice(0, 40);
@@ -87,7 +100,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     const token = crypto.randomBytes(24).toString('base64url');
     groups[id] = {
       ...defaultState(),
-      meta: { name, owner: String(req.body?.owner || '').trim().slice(0, 20), createdAt: new Date().toISOString(), adminTokenHash: sha256(token) },
+      meta: { name, owner: cleanName(req.body?.owner), ownerId: req.body?.owner ? userIdFor(req.body.owner) : null, createdAt: new Date().toISOString(), adminTokenHash: sha256(token) },
     };
     store.save();
     res.status(201).json({ id, name, adminToken: token });
@@ -157,14 +170,16 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
   }
 
   // 투표/주문 요청의 투표자 id와 이름 확인. 관리자 이름(SB)은 관리자 키가 있어야 쓸 수 있다.
+  // 투표/주문 요청자: 등록된 계정 id여야 하고, 이름은 DB의 계정 이름을 쓴다.
+  // 같은 계정이면 어느 기기에서 들어와도 같은 사람의 표·메뉴로 이어진다.
   function voterFrom(req) {
     const voterId = String(req.body?.voterId || '');
-    if (!/^[\w-]{8,64}$/.test(voterId)) throw new AppError(400, '투표자 정보가 올바르지 않습니다.');
-    const name = cleanName(req.body?.name);
-    if (name.toLowerCase() === ADMIN_NAME && !isAdminKey(req.body?.key)) {
+    const user = store.state.users[voterId];
+    if (!user) throw new AppError(401, '이름을 먼저 등록해 주세요.', 'no_user');
+    if (user.name.toLowerCase() === ADMIN_NAME && !isAdminKey(req.body?.key)) {
       throw new AppError(403, 'SB는 관리자 전용 이름입니다. 관리자 키를 입력해 주세요.');
     }
-    return { voterId, name };
+    return { voterId, name: user.name };
   }
 
   // 결정 후 주문(메뉴 선택)이 바뀌면 결과와 통계 기록의 메뉴 집계를 다시 계산한다

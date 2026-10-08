@@ -120,6 +120,8 @@ const MESSAGES = {
   '그룹을 찾을 수 없습니다.': { en: 'Group not found.', ja: 'グループが見つかりません。', zh: '找不到该群组。' },
   '그룹 이름을 입력해 주세요.': { en: 'Please enter a group name.', ja: 'グループ名を入力してください。', zh: '请输入群组名称。' },
   '그룹을 더 만들 수 없습니다.': { en: 'No more groups can be created.', ja: 'これ以上グループを作成できません。', zh: '无法再创建更多群组。' },
+  '이름을 입력해 주세요.': { en: 'Please enter your name.', ja: '名前を入力してください。', zh: '请输入名字。' },
+  '이름을 먼저 등록해 주세요.': { en: 'Please register your name first.', ja: '先に名前を登録してください。', zh: '请先登记名字。' },
   '존재하지 않는 API입니다.': { en: 'Unknown API.', ja: '存在しない API です。', zh: '不存在的 API。' },
   '요청 형식이 올바르지 않습니다.': { en: 'Invalid request format.', ja: 'リクエストの形式が正しくありません。', zh: '请求格式无效。' },
   '서버 오류가 발생했습니다.': { en: 'A server error occurred.', ja: 'サーバーエラーが発生しました。', zh: '服务器发生错误。' },

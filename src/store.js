@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-// 그룹 하나의 상태. 전체 저장 문서는 { groups: { default: 그룹상태, <그룹id>: 그룹상태 } }
+// 그룹 하나의 상태. 전체 저장 문서는 { users: {...}, groups: { default: 그룹상태, <그룹id>: 그룹상태 } }
 function defaultState() {
   return {
     meta: null, // 기본 그룹은 null, 만든 그룹은 { name, owner, createdAt, adminTokenHash }
@@ -21,6 +21,7 @@ function defaultState() {
 // 예전 형식(그룹 없이 상태 하나)이면 기본 그룹으로 옮기고, 각 그룹에 빠진 항목을 채운다
 function normalize(raw) {
   const root = raw && raw.groups ? raw : { groups: { default: raw || {} } };
+  root.users = root.users || {}; // 계정 { [사용자id]: { name, createdAt, lastSeenAt } } (모든 그룹 공통)
   for (const [id, g] of Object.entries(root.groups)) root.groups[id] = { ...defaultState(), ...g };
   if (!root.groups.default) root.groups.default = defaultState();
   return root;

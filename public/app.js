@@ -76,14 +76,47 @@
     renderTheme();
   });
 
-  // ---------- 사용자 (이름 + 관리자) ----------
-  let voterId = local.get('eatzy-voter');
-  if (!voterId) {
-    voterId = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2)).replace(/[^\w-]/g, '');
-    local.set('eatzy-voter', voterId);
-  }
-  let userName = local.get('eatzy-name') || '';
+  // ---------- 사용자 (DB 계정 + 관리자) ----------
+  // 계정은 서버 DB에 저장되고(이름 = ID), 브라우저는 마지막으로 쓴 계정을 기억해 다음에 자동으로 들어간다
+  let savedUser = null;
+  try {
+    savedUser = JSON.parse(local.get('eatzy-user') || 'null');
+  } catch {}
+  let voterId = (savedUser && savedUser.id) || null; // 투표·주문은 계정 id 기준
+  let userName = (savedUser && savedUser.name) || local.get('eatzy-name') || ''; // eatzy-name: 예전 버전에서 저장한 이름
   let adminKey = local.get('eatzy-admin-key'); // 전체 관리자(SB) 키
+
+  function saveUser(user) {
+    voterId = user.id;
+    userName = user.name;
+    local.set('eatzy-user', JSON.stringify({ id: user.id, name: user.name }));
+    local.set('eatzy-name', null);
+  }
+
+  // 서버에 계정 등록/로그인 (같은 이름이면 기존 계정)
+  async function loginAs(name, key) {
+    const res = await api('/api/users', { method: 'POST', body: { name, ...(key ? { key } : {}) } });
+    saveUser(res.user);
+    return res;
+  }
+
+  // 시작할 때 기억해 둔 계정으로 자동 로그인 (예전 버전에서 이름만 있던 브라우저도 이때 계정이 생긴다)
+  async function ensureUser() {
+    if (!userName) return false;
+    try {
+      await loginAs(userName, isAdminName(userName) ? adminKey : null);
+      return true;
+    } catch (err) {
+      if (err.status === 403) {
+        adminKey = null;
+        local.set('eatzy-admin-key', null);
+        openUserDialog(true, t('user.adminExpired'));
+      } else {
+        showMessage(err.message, true);
+      }
+      return false;
+    }
+  }
 
   // 그룹을 만들 때 받은 그룹 관리자 키 { 그룹id: 키 }
   function groupTokens() {
@@ -174,11 +207,12 @@
     if (groupMode) {
       const groupName = $('userGroupName').value.trim();
       if (!groupName) return showError(t('user.groupRequired'));
+      if (isAdminName(name) && !$('userKey').value && !adminKey) return showError(t('user.keyRequired'));
       $('userOk').disabled = true;
       try {
-        const g = await api('/api/groups', { method: 'POST', body: { name: groupName, owner: name } });
+        await loginAs(name, isAdminName(name) ? $('userKey').value || adminKey : null);
+        const g = await api('/api/groups', { method: 'POST', body: { name: groupName, owner: userName } });
         setGroupToken(g.id, g.adminToken);
-        local.set('eatzy-name', name);
         local.set('eatzy-group-created', g.name);
         location.href = `/g/${g.id}`;
       } catch (err) {
@@ -194,22 +228,21 @@
       key = $('userKey').value;
       if (!key && !(isAdminName(userName) && adminKey)) return showError(t('user.keyRequired'));
       key = key || adminKey;
-      $('userOk').disabled = true;
-      try {
-        await api('/api/admin/check', { adminKey: key });
-      } catch (err) {
-        $('userOk').disabled = false;
-        return showError(err.message);
-      }
+    }
+    $('userOk').disabled = true;
+    let res;
+    try {
+      res = await loginAs(name, key); // SB면 서버가 관리자 키를 확인한다
+    } catch (err) {
+      return showError(err.message);
+    } finally {
       $('userOk').disabled = false;
     }
-    userName = name;
     adminKey = key;
-    local.set('eatzy-name', userName);
     local.set('eatzy-admin-key', adminKey);
     $('userDialog').close();
-    renderUser();
-    render();
+    if (!res.isNew) showMessage(t('user.welcomeBack', { name: res.user.name }));
+    await refresh();
     if (isAdmin()) loadAdmin();
   });
 
@@ -598,7 +631,7 @@
 
   async function refresh() {
     try {
-      data = await api(`/api/state?voter=${encodeURIComponent(voterId)}`);
+      data = await api(`/api/state?voter=${encodeURIComponent(voterId || '')}`);
       render();
       const key = (data.history && data.history[0] && data.history[0].roundId) || '';
       if (key !== statsKey) {
@@ -645,7 +678,9 @@
       await fn();
     } catch (err) {
       if (err.code === 'closed') showClosed();
-      else if (err.status === 403 && isAdminName(userName)) adminRejected();
+      else if (err.code === 'no_user') {
+        if (await ensureUser()) showMessage(t('user.retry'));
+      } else if (err.status === 403 && isAdminName(userName)) adminRejected();
       else showMessage(err.message, true);
     } finally {
       busy = false;
@@ -1302,6 +1337,7 @@
   // ---------- 시작 ----------
   applyStatic();
   if (!userName) openUserDialog(true);
+  else ensureUser().then((ok) => ok && refresh());
   // 방금 만든 그룹이면 안내
   const created = local.get('eatzy-group-created');
   if (created && groupToken) {

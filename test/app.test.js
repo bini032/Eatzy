@@ -58,6 +58,7 @@ async function setup(opts = {}) {
   const placesFile = path.join(dir, 'restaurants.json');
   if (opts.places) fs.writeFileSync(placesFile, JSON.stringify(opts.places));
   const app = createApp({ store, adminKey: 'hs', defaultPlaceQuery: '더존을지타워', defaultOrigin: null, placesFile });
+  for (const name of TESTERS) store.state.users[userIdFor(name)] = { name, createdAt: '2026-01-01T00:00:00Z', lastSeenAt: '2026-01-01T00:00:00Z' };
   const server = await new Promise((resolve) => {
     const s = app.listen(0, () => resolve(s));
   });
@@ -70,16 +71,23 @@ async function setup(opts = {}) {
     });
     return { status: res.status, body: await res.json() };
   };
-  return { call, store, calls, placesFile, base, close: () => server.close() };
+  // 계정 등록(로그인) 후 id 반환
+  const login = async (name, key) => {
+    const r = await call('POST', '/api/users', { name, key });
+    if (r.status >= 400) return { error: r };
+    return r.body.user.id;
+  };
+  return { call, store, calls, placesFile, base, login, close: () => server.close() };
 }
 
 test.afterEach(() => {
   global.fetch = realFetch;
 });
 
-const V1 = 'voter-aaaa-1111';
-const V2 = 'voter-bbbb-2222';
-const V3 = 'voter-cccc-3333';
+// 테스트용 계정 (setup에서 미리 등록)
+const { userIdFor } = require('../src/users');
+const TESTERS = ['테스터1', '테스터2', '테스터3', '테스터4'];
+const [V1, V2, V3, V4] = TESTERS.map(userIdFor);
 
 test('카테고리별로 한 곳씩 후보를 뽑는다', async () => {
   const t = await setup();
@@ -298,7 +306,7 @@ test('메뉴: 목록의 메뉴를 모두 보여 주고, 가게와 메뉴를 함�
     assert.deepEqual(chinese.menus, []);
 
     let r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V1, candidateId: korean.id, menu: '테스트찌개' });
-    assert.deepEqual(r.body.round.myVote, { candidateId: korean.id, menus: ['테스트찌개'], name: '' });
+    assert.deepEqual(r.body.round.myVote, { candidateId: korean.id, menus: ['테스트찌개'], name: '테스터1' });
     await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V2, candidateId: korean.id, menu: '테스트찌개' });
     r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V3, candidateId: korean.id });
     assert.deepEqual(r.body.round.menuCounts[korean.id], { 테스트찌개: 2, '': 1 });
@@ -393,7 +401,7 @@ test('메뉴: 누구나 메뉴를 추가하면 그 메뉴로 투표되고, 다�
     let r = await t.call('POST', url, { voterId: V1, menu: '  테스트떡볶이 ' });
     assert.equal(r.status, 200);
     assert.deepEqual(r.body.round.candidates.find((c) => c.id === snack.id).menus, ['테스트떡볶이']);
-    assert.deepEqual(r.body.round.myVote, { candidateId: snack.id, menus: ['테스트떡볶이'], name: '' });
+    assert.deepEqual(r.body.round.myVote, { candidateId: snack.id, menus: ['테스트떡볶이'], name: '테스터1' });
 
     r = await t.call('POST', url, { voterId: V2, menu: '테스트떡볶이' });
     assert.deepEqual(r.body.round.candidates.find((c) => c.id === snack.id).menus, ['테스트떡볶이'], '중복 추가 안 됨');
@@ -594,7 +602,7 @@ test('메뉴 여러 개 선택: 메뉴별로 세고, 결정 시 가격 확인된
     const { round } = (await t.call('POST', '/api/rounds', {})).body;
     const c = round.candidates.find((x) => x.categoryKey === 'chinese');
     let r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V1, candidateId: c.id, menus: ['짜장면 7,000원', '군만두'] });
-    assert.deepEqual(r.body.round.myVote, { candidateId: c.id, menus: ['짜장면 7,000원', '군만두'], name: '' });
+    assert.deepEqual(r.body.round.myVote, { candidateId: c.id, menus: ['짜장면 7,000원', '군만두'], name: '테스터1' });
     await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V2, candidateId: c.id, menus: ['짜장면 7,000원', '짬뽕 8,500원'] });
     r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V3, candidateId: c.id, menus: [] });
     assert.equal(r.body.round.counts[c.id], 3, '메뉴를 여러 개 골라도 가게 표는 1인 1표');
@@ -619,17 +627,43 @@ test('메뉴 여러 개 선택: 메뉴별로 세고, 결정 시 가격 확인된
   }
 });
 
-test('이름과 관리자: 투표에 이름이 남고, SB 이름은 관리자 키가 있어야 쓸 수 있다', async () => {
+test('계정: 이름으로 DB에 계정이 생기고, 같은 이름이면 같은 계정이며, SB는 관리자 키가 있어야 한다', async () => {
   const t = await setup({ noKakao: true, places: MENU_LIST });
   try {
+    let r = await t.call('POST', '/api/users', { name: '  홍길동  ' });
+    assert.equal(r.status, 201);
+    assert.equal(r.body.isNew, true);
+    const hong = r.body.user.id;
+    assert.equal(r.body.user.name, '홍길동');
+    assert.ok(t.store.state.users[hong], 'DB에 저장됨');
+
+    // 다른 기기에서 같은 이름(대소문자·공백 무관)으로 들어오면 같은 계정
+    r = await t.call('POST', '/api/users', { name: '홍길동' });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.isNew, false);
+    assert.equal(r.body.user.id, hong);
+
+    assert.equal((await t.call('POST', '/api/users', { name: '   ' })).status, 400);
+    assert.equal((await t.call('POST', '/api/users', { name: 'sb' })).status, 403);
+    const sb = await t.login('SB', 'hs');
+    assert.match(sb, /^u[0-9a-f]{15}$/);
+
     const { round } = (await t.call('POST', '/api/rounds', {})).body;
     const korean = round.candidates.find((c) => c.categoryKey === 'korean');
-    let r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V1, name: '  홍길동  ', candidateId: korean.id, menus: ['테스트찌개'] });
-    assert.deepEqual(r.body.round.voters[korean.id], [{ name: '홍길동', menus: ['테스트찌개'] }]);
+    r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: hong, name: '가짜이름', candidateId: korean.id, menus: ['테스트찌개'] });
+    assert.deepEqual(r.body.round.voters[korean.id], [{ name: '홍길동', menus: ['테스트찌개'] }], '이름은 DB 계정 이름을 쓴다');
 
-    r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V2, name: 'sb', candidateId: korean.id });
-    assert.equal(r.status, 403);
-    r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V2, name: 'SB', key: 'hs', candidateId: korean.id });
+    // 같은 계정이면 다른 기기에서도 같은 표로 이어진다 (표가 늘지 않고 바뀐다)
+    r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: hong, candidateId: korean.id, menus: [] });
+    assert.equal(r.body.round.totalVotes, 1);
+
+    r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: 'u-unknown-123456', candidateId: korean.id });
+    assert.equal(r.status, 401);
+    assert.equal(r.body.code, 'no_user');
+
+    r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: sb, candidateId: korean.id });
+    assert.equal(r.status, 403, 'SB 계정은 관리자 키 필요');
+    r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: sb, key: 'hs', candidateId: korean.id });
     assert.equal(r.status, 200);
 
     const check = await realFetch(`${t.base}/api/admin/check`, { headers: { 'x-admin-key': 'hs' } });
@@ -659,7 +693,7 @@ test('결정 후 메뉴 고르기: 다른 가게에 투표했거나 투표 안 �
     assert.equal(r.status, 409, '결정 전에는 주문 불가');
 
     r = await t.call('POST', `/api/rounds/${round.id}/complete`, { key: 'hs' });
-    assert.deepEqual(r.body.round.orders, [{ name: '가', menus: ['짜장면 7,000원'], mine: false }], '결정된 가게에 투표하며 고른 메뉴로 시작');
+    assert.deepEqual(r.body.round.orders, [{ name: '테스터1', menus: ['짜장면 7,000원'], mine: false }], '결정된 가게에 투표하며 고른 메뉴로 시작');
 
     r = await t.call('POST', `/api/rounds/${round.id}/order`, { voterId: V3, name: '다', menus: ['짬뽕 8,500원'] });
     assert.deepEqual(r.body.round.myOrder, ['짬뽕 8,500원']);
@@ -723,7 +757,6 @@ test('선택 적중 랭킹: 이름별로 내가 고른 가게가 결정된 비�
   ];
   const t = await setup({ noKakao: true, places });
   try {
-    const V4 = 'voter-dddd-4444';
     for (let i = 0; i < 2; i++) {
       const { round } = (await t.call('POST', '/api/rounds', { key: 'hs' })).body;
       const [c1, c2, c3] = round.candidates;
@@ -736,14 +769,15 @@ test('선택 적중 랭킹: 이름별로 내가 고른 가게가 결정된 비�
     // 1회차: SB·AA가 고른 1번 결정, 2회차: AA·BB가 고른 2번 결정
     const st = (await t.call('GET', '/api/stats')).body;
     const byName = Object.fromEntries(st.people.map((p) => [p.name, p]));
+    // 테스터1=SB 역할, 테스터2=AA, 테스터3=BB, 테스터4=CC
     assert.deepEqual(st.people.map((p) => [p.name, p.wins, p.rounds, p.rate]), [
-      ['AA', 2, 2, 100],
-      ['SB', 1, 2, 50],
-      ['BB', 1, 2, 50],
-      ['CC', 0, 2, 0],
+      ['테스터2', 2, 2, 100],
+      ['테스터1', 1, 2, 50],
+      ['테스터3', 1, 2, 50],
+      ['테스터4', 0, 2, 0],
     ]);
-    assert.equal(byName.SB.rounds, 2);
-    assert.equal(st.people.at(-1).name, 'CC');
+    assert.equal(byName['테스터1'].rounds, 2);
+    assert.equal(st.people.at(-1).name, '테스터4');
   } finally {
     t.close();
   }
