@@ -21,6 +21,10 @@
     },
   };
 
+  // ---------- 그룹 (주소 /g/그룹id, 없으면 기본 그룹) ----------
+  const groupMatch = location.pathname.match(/^\/g\/([a-z0-9]+)/);
+  const groupId = groupMatch ? groupMatch[1] : 'default';
+
   // ---------- 언어 ----------
   let lang = I18N[local.get('eatzy-lang')] ? local.get('eatzy-lang') : 'ko';
 
@@ -79,14 +83,32 @@
     local.set('eatzy-voter', voterId);
   }
   let userName = local.get('eatzy-name') || '';
-  let adminKey = local.get('eatzy-admin-key');
+  let adminKey = local.get('eatzy-admin-key'); // 전체 관리자(SB) 키
+
+  // 그룹을 만들 때 받은 그룹 관리자 키 { 그룹id: 키 }
+  function groupTokens() {
+    try {
+      return JSON.parse(local.get('eatzy-group-tokens') || '{}');
+    } catch {
+      return {};
+    }
+  }
+  function setGroupToken(id, token) {
+    const all = groupTokens();
+    if (token) all[id] = token;
+    else delete all[id];
+    local.set('eatzy-group-tokens', JSON.stringify(all));
+  }
+  let groupToken = groupTokens()[groupId] || null;
 
   const isAdminName = (n) => String(n || '').trim().toLowerCase() === 'sb';
-  const isAdmin = () => isAdminName(userName) && Boolean(adminKey);
+  const isAdmin = () => Boolean(groupToken) || (isAdminName(userName) && Boolean(adminKey));
+  // 관리자 요청에 쓰는 키: 그룹 관리자 키가 있으면 그것, 아니면 SB의 전체 관리자 키
+  const secret = () => groupToken || (isAdminName(userName) ? adminKey : null);
 
-  // 투표·주문 요청에 붙는 내 정보. SB는 관리자 키를 함께 보낸다
+  // 투표·주문 요청에 붙는 내 정보. 관리자는 키를 함께 보낸다
   function me(extra = {}) {
-    return { voterId, name: userName, ...(isAdminName(userName) && adminKey ? { key: adminKey } : {}), ...extra };
+    return { voterId, name: userName, ...(secret() ? { key: secret() } : {}), ...extra };
   }
 
   function renderUser() {
@@ -96,7 +118,24 @@
     btn.title = t('user.change');
     $('completeBtn').hidden = !isAdmin() || !data || !data.round || data.round.status !== 'voting';
     $('adminSection').hidden = !isAdmin();
+    const group = data && data.group;
+    $('groupBadge').hidden = !(group && !group.isDefault);
+    if (group && !group.isDefault) $('groupBadge').textContent = t('group.badge', { name: group.name });
+    $('shareBtn').textContent = groupId === 'default' ? t('share') : t('share.group');
   }
+
+  // 이름 등록 창: 일반 참여 / 관리자로 시작하기(새 그룹 만들기)
+  let groupMode = false;
+  function setGroupMode(on) {
+    groupMode = on;
+    $('userGroup').hidden = !on;
+    $('userModeBtn').textContent = on ? t('user.back') : t('user.startAdmin');
+    $('userOk').textContent = on ? t('user.create') : t('user.save');
+    $('userAdmin').hidden = on || !isAdminName($('userName').value);
+    $('userError').hidden = true;
+    if (on) $('userGroupName').focus();
+  }
+  $('userModeBtn').addEventListener('click', () => setGroupMode(!groupMode));
 
   function openUserDialog(required, errorText) {
     const dialog = $('userDialog');
@@ -107,6 +146,7 @@
     $('userError').textContent = errorText || '';
     $('userError').hidden = !errorText;
     dialog.dataset.required = required ? '1' : '';
+    setGroupMode(false);
     if (!dialog.open) dialog.showModal();
     $('userName').focus();
   }
@@ -116,7 +156,7 @@
     if ($('userDialog').dataset.required) e.preventDefault();
   });
   $('userName').addEventListener('input', () => {
-    $('userAdmin').hidden = !isAdminName($('userName').value);
+    $('userAdmin').hidden = groupMode || !isAdminName($('userName').value);
   });
   $('userCancel').addEventListener('click', () => $('userDialog').close());
   $('userBtn').addEventListener('click', () => openUserDialog(false));
@@ -129,6 +169,26 @@
       $('userError').hidden = false;
     };
     if (!name) return showError(t('user.nameRequired'));
+
+    // 관리자로 시작하기: 새 그룹을 만들고 그 그룹 링크로 이동
+    if (groupMode) {
+      const groupName = $('userGroupName').value.trim();
+      if (!groupName) return showError(t('user.groupRequired'));
+      $('userOk').disabled = true;
+      try {
+        const g = await api('/api/groups', { method: 'POST', body: { name: groupName, owner: name } });
+        setGroupToken(g.id, g.adminToken);
+        local.set('eatzy-name', name);
+        local.set('eatzy-group-created', g.name);
+        location.href = `/g/${g.id}`;
+      } catch (err) {
+        showError(err.message);
+      } finally {
+        $('userOk').disabled = false;
+      }
+      return;
+    }
+
     let key = null;
     if (isAdminName(name)) {
       key = $('userKey').value;
@@ -155,6 +215,14 @@
 
   // 관리자 키가 바뀌어 거부되면 다시 입력받는다
   function adminRejected() {
+    if (groupToken) {
+      groupToken = null;
+      setGroupToken(groupId, null);
+      renderUser();
+      render();
+      showMessage(t('user.groupAdminLost'), true);
+      return;
+    }
     adminKey = null;
     local.set('eatzy-admin-key', null);
     renderUser();
@@ -166,7 +234,7 @@
   let busy = false;
 
   async function api(path, options = {}) {
-    const headers = { 'x-lang': lang };
+    const headers = { 'x-lang': lang, 'x-group': groupId };
     if (options.body) headers['Content-Type'] = 'application/json';
     if (options.adminKey) headers['x-admin-key'] = options.adminKey;
     const res = await fetch(path, {
@@ -385,7 +453,7 @@
     keepInputs(el, '[data-order-add]', () => {
       el.innerHTML = `
         <p class="eyebrow">${esc(t('decision.eyebrow'))}</p>
-        <h2>${esc(w.name)}</h2>
+        <h2><button type="button" class="name-btn" data-pop="winner" title="${esc(t('pop.open'))}">${esc(w.name)} <span class="info-i" aria-hidden="true">ⓘ</span></button></h2>
         <p>${esc(catName(w.categoryLabel))}</p>
         ${w.memo ? `<p>${esc(w.memo)}</p>` : ''}
         ${w.address || w.distance != null ? `<p class="muted">${esc(w.address)}${w.address && w.distance != null ? ' · ' : ''}${w.distance != null ? esc(t('decision.about', { d: formatDistance(w.distance) })) : ''}</p>` : ''}
@@ -468,7 +536,7 @@
               ${c.pinned ? `<span class="badge pin">${esc(t('card.pinned'))}</span>` : ''}
               ${leader ? `<span class="badge lead">${esc(done ? t('card.final') : t('card.leading'))}</span>` : ''}
             </div>
-            <h3>${esc(c.name)}</h3>
+            <h3><button type="button" class="name-btn" data-pop="${esc(c.id)}" title="${esc(t('pop.open'))}">${esc(c.name)} <span class="info-i" aria-hidden="true">ⓘ</span></button></h3>
             ${c.memo ? `<div class="meta">${esc(c.memo)}</div>` : ''}
             ${c.address || c.distance != null ? `<div class="meta">${esc(c.address)}${c.address && c.distance != null ? ' · ' : ''}${c.distance != null ? formatDistance(c.distance) : ''}</div>` : ''}
             ${c.phone ? `<div class="meta">☎ ${esc(c.phone)}</div>` : ''}
@@ -538,8 +606,21 @@
         loadStats();
       }
     } catch (err) {
+      if (err.code === 'no_group') return showNoGroup();
       showMessage(err.message, true);
     }
+  }
+
+  // 없는 그룹 링크: 안내하고 갱신을 멈춘다
+  let noGroup = false;
+  function showNoGroup() {
+    noGroup = true;
+    for (const id of ['locationPanel', 'roundSection', 'statsSection', 'historySection', 'decision']) $(id).hidden = true;
+    document.querySelector('.find-row').hidden = true;
+    const el = $('message');
+    el.className = 'message error-msg';
+    el.innerHTML = `${esc(t('group.notFound'))} <a href="/">${esc(t('group.home'))}</a>`;
+    el.hidden = false;
   }
 
   function applyRound(round) {
@@ -570,6 +651,98 @@
       busy = false;
     }
   }
+
+  // ---------- 가게 정보 미리보기 (PC: 마우스 올리면 말풍선, 모바일/클릭: 아래에서 올라오는 창) ----------
+  function placeFor(key) {
+    const round = data && data.round;
+    if (!round) return null;
+    if (key === 'winner') return round.winner;
+    return round.candidates.find((c) => c.id === key) || null;
+  }
+
+  function placeDetails(p) {
+    const menus = p.menus || [];
+    const rows = [
+      p.memo ? `<p>${esc(p.memo)}</p>` : '',
+      p.address ? `<p class="muted">📍 ${esc(p.address)}${p.distance != null ? ` · ${formatDistance(p.distance)}` : ''}</p>` : '',
+      p.phone ? `<p>☎ <a href="tel:${esc(p.phone.replace(/[^\d+]/g, ''))}">${esc(p.phone)}</a></p>` : '',
+    ].join('');
+    const menuList = menus.length
+      ? `<ul class="pop-menus">${menus
+          .map((m) => {
+            const price = menuPrice(m);
+            const name = price === null ? m : m.replace(/\s*\d{1,3}(?:,\d{3})+\s*원\s*$|\s*\d+\s*원\s*$/, '');
+            return `<li><span>${esc(name)}</span>${price !== null ? `<strong>${esc(won(price))}</strong>` : ''}</li>`;
+          })
+          .join('')}</ul>`
+      : `<p class="muted small-text">${esc(t('pop.noMenus'))}</p>`;
+    return `
+      <div class="pop-head"><span class="badge cat">${esc(catName(p.categoryLabel || p.category))}</span><h3>${esc(p.name)}</h3></div>
+      ${rows}
+      <span class="label">${esc(t('pop.menus'))}</span>
+      ${menuList}
+      <div class="pop-links">
+        <a href="${esc(naverMapUrl(p))}" target="_blank" rel="noopener">${esc(t('card.naver'))}</a>
+        ${infoLink(p)}
+      </div>`;
+  }
+
+  const canHover = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  const pop = $('placePop');
+  let popTimer = null;
+  let popKey = null;
+
+  function showPop(target) {
+    const p = placeFor(target.dataset.pop);
+    if (!p) return;
+    clearTimeout(popTimer);
+    if (popKey !== target.dataset.pop || pop.hidden) {
+      popKey = target.dataset.pop;
+      pop.innerHTML = placeDetails(p);
+      pop.hidden = false;
+    }
+    // 화면 밖으로 나가지 않게 위치 조정 (기본: 이름 아래)
+    const r = target.getBoundingClientRect();
+    const w = pop.offsetWidth;
+    const h = pop.offsetHeight;
+    let left = Math.min(Math.max(8, r.left), window.innerWidth - w - 8);
+    let top = r.bottom + 8;
+    if (top + h > window.innerHeight - 8 && r.top - h - 8 > 8) top = r.top - h - 8;
+    pop.style.left = `${left + window.scrollX}px`;
+    pop.style.top = `${top + window.scrollY}px`;
+  }
+
+  function hidePopSoon() {
+    clearTimeout(popTimer);
+    popTimer = setTimeout(() => {
+      pop.hidden = true;
+      popKey = null;
+    }, 180);
+  }
+
+  if (canHover) {
+    // 카드가 3초마다 다시 그려지므로 문서 전체에서 위임 처리
+    document.addEventListener('mouseover', (e) => {
+      const target = e.target.closest('[data-pop]');
+      if (target) return showPop(target);
+      if (e.target.closest('#placePop')) return clearTimeout(popTimer);
+      if (!pop.hidden) hidePopSoon();
+    });
+  }
+
+  document.addEventListener('click', (e) => {
+    const target = e.target.closest('[data-pop]');
+    if (!target) return;
+    const p = placeFor(target.dataset.pop);
+    if (!p) return;
+    pop.hidden = true;
+    $('placeDialogBody').innerHTML = placeDetails(p);
+    $('placeDialog').showModal();
+  });
+  $('placeDialogClose').addEventListener('click', () => $('placeDialog').close());
+  $('placeDialog').addEventListener('click', (e) => {
+    if (e.target === $('placeDialog')) $('placeDialog').close(); // 바깥(배경) 누르면 닫기
+  });
 
   // ---------- 위치 ----------
   async function setLocation(body) {
@@ -650,7 +823,7 @@
     const send = (extra) => api('/api/rounds', { method: 'POST', body: { ...body, ...extra } });
     let res;
     try {
-      res = await send(isAdmin() ? { key: adminKey } : {});
+      res = await send(isAdmin() ? { key: secret() } : {});
     } catch (err) {
       if (err.status !== 403) throw err;
       if (err.code === 'closed') return showClosed();
@@ -860,7 +1033,7 @@
       try {
         const res = await api(`/api/rounds/${round.id}/candidates/${encodeURIComponent(c.id)}/menus`, {
           method: 'POST',
-          body: { key: adminKey, menus, voterId },
+          body: { key: secret(), menus, voterId },
         });
         applyRound(res.round);
         close();
@@ -902,7 +1075,7 @@
     if (round.needsDraw) return showMessage(t('complete.needDraw'), true);
     if (!confirm(t('complete.confirm'))) return;
     withBusy(async () => {
-      const res = await api(`/api/rounds/${round.id}/complete`, { method: 'POST', body: { key: adminKey, voterId } });
+      const res = await api(`/api/rounds/${round.id}/complete`, { method: 'POST', body: { key: secret(), voterId } });
       applyRound(res.round);
       showMessage('');
       await refresh();
@@ -997,7 +1170,7 @@
   // ---------- 가게 관리 (관리자) ----------
   let adminPlaces = null;
 
-  const adminApi = (path, options = {}) => api(path, { ...options, adminKey });
+  const adminApi = (path, options = {}) => api(path, { ...options, adminKey: secret() });
 
   function adminShowError(text) {
     $('adminError').textContent = text || '';
@@ -1129,10 +1302,16 @@
   // ---------- 시작 ----------
   applyStatic();
   if (!userName) openUserDialog(true);
+  // 방금 만든 그룹이면 안내
+  const created = local.get('eatzy-group-created');
+  if (created && groupToken) {
+    local.set('eatzy-group-created', null);
+    showMessage(t('group.created', { name: created }));
+  }
   refresh();
   setInterval(() => {
-    const dialogOpen = ['userDialog', 'menuDialog', 'noticeDialog'].some((id) => $(id).open);
-    if (!busy && !document.hidden && !dialogOpen) refresh();
+    const dialogOpen = ['userDialog', 'menuDialog', 'noticeDialog', 'placeDialog'].some((id) => $(id).open);
+    if (!busy && !noGroup && !document.hidden && !dialogOpen) refresh();
   }, POLL_MS);
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) refresh();

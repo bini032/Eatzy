@@ -1,8 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 
+// 그룹 하나의 상태. 전체 저장 문서는 { groups: { default: 그룹상태, <그룹id>: 그룹상태 } }
 function defaultState() {
   return {
+    meta: null, // 기본 그룹은 null, 만든 그룹은 { name, owner, createdAt, adminTokenHash }
     settings: {
       origin: null, // { name, x, y, source }  x = 경도, y = 위도
       radius: 1000,
@@ -16,6 +18,14 @@ function defaultState() {
   };
 }
 
+// 예전 형식(그룹 없이 상태 하나)이면 기본 그룹으로 옮기고, 각 그룹에 빠진 항목을 채운다
+function normalize(raw) {
+  const root = raw && raw.groups ? raw : { groups: { default: raw || {} } };
+  for (const [id, g] of Object.entries(root.groups)) root.groups[id] = { ...defaultState(), ...g };
+  if (!root.groups.default) root.groups.default = defaultState();
+  return root;
+}
+
 // 단일 프로세스 기준의 아주 단순한 저장소. 상태 전체를 메모리에 두고 바뀔 때마다 통째로 저장한다.
 // 투표 인원이 수십 명 수준인 점심 투표에는 충분하다.
 // - 기본: JSON 파일
@@ -24,7 +34,7 @@ class Store {
   constructor(file, { redis } = {}) {
     this.file = file;
     this.redis = redis || null; // { url, token, key }
-    this.state = this.redis ? defaultState() : this.load();
+    this.state = this.redis ? normalize(null) : this.load();
     this.pushing = null;
     this.dirty = false;
   }
@@ -34,16 +44,16 @@ class Store {
   async init() {
     if (!this.redis) return;
     const raw = await this.redisCommand(['GET', this.redis.key]);
-    if (raw) this.state = { ...defaultState(), ...JSON.parse(raw) };
+    if (raw) this.state = normalize(JSON.parse(raw));
   }
 
   load() {
     try {
       const raw = fs.readFileSync(this.file, 'utf8');
-      return { ...defaultState(), ...JSON.parse(raw) };
+      return normalize(JSON.parse(raw));
     } catch (err) {
       if (err.code !== 'ENOENT') console.error('저장 파일을 읽지 못해 새로 시작합니다:', err.message);
-      return defaultState();
+      return normalize(null);
     }
   }
 
@@ -95,4 +105,4 @@ class Store {
   }
 }
 
-module.exports = { Store, defaultState };
+module.exports = { Store, defaultState, normalize };

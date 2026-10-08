@@ -12,7 +12,7 @@
     } catch {}
   </script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
   <main class="wrap">
@@ -21,6 +21,7 @@
         <h1>Eatzy<span class="brand-dot">.</span></h1>
         <span class="brand-by" data-i18n="app.by">by SBComms</span>
         <p class="sub" data-i18n="app.subtitle">오늘 점심, 다같이 정해요</p>
+        <p id="groupBadge" class="group-badge" hidden></p>
       </div>
       <div class="top-actions">
         <button id="userBtn" class="ghost small" type="button" hidden></button>
@@ -204,10 +205,17 @@
         <p class="muted small-text" data-i18n="user.adminDesc"></p>
         <input id="userKey" type="password" autocomplete="off" data-i18n-placeholder="user.adminPh" />
       </div>
+      <div id="userGroup" class="user-group" hidden>
+        <p class="muted small-text" data-i18n="user.groupDesc"></p>
+        <input id="userGroupName" type="text" maxlength="40" data-i18n-placeholder="user.groupPh" />
+      </div>
       <p id="userError" class="error" hidden></p>
       <div class="dialog-actions">
         <button id="userCancel" class="ghost" type="button" data-i18n="cancel" hidden>취소</button>
         <button id="userOk" class="primary" type="submit" data-i18n="user.save">시작하기</button>
+      </div>
+      <div class="user-mode">
+        <button id="userModeBtn" class="link" type="button" data-i18n="user.startAdmin">👑 관리자로 시작하기 (새 그룹 만들기)</button>
       </div>
     </form>
   </dialog>
@@ -225,6 +233,14 @@
     </form>
   </dialog>
 
+  <div id="placePop" class="place-pop" role="tooltip" hidden></div>
+  <dialog id="placeDialog" class="place-dialog">
+    <div id="placeDialogBody"></div>
+    <div class="dialog-actions">
+      <button id="placeDialogClose" class="ghost" type="button" data-i18n="pop.close">닫기</button>
+    </div>
+  </dialog>
+
   <dialog id="noticeDialog">
     <h3 data-i18n="notice.title">투표가 완료되었습니다!</h3>
     <p class="muted" data-i18n="notice.text">담당자에게 직접 문의해주세요.</p>
@@ -234,7 +250,7 @@
     </div>
   </dialog>
 
-  <script src="i18n.js"></script>
-  <script src="app.js"></script>
+  <script src="/i18n.js"></script>
+  <script src="/app.js"></script>
 </body>
 </html>

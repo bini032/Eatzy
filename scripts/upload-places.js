@@ -5,6 +5,7 @@
 //   npm run upload-places -- my-list.json
 //
 // 필요한 설정(.env 또는 환경변수): EATZY_URL=https://….onrender.com, ADMIN_KEY=관리자 키
+// 특정 그룹에 올리려면 EATZY_GROUP=그룹id (/g/그룹id 의 그룹id). 없으면 기본 그룹
 const fs = require('fs');
 const path = require('path');
 const { loadPlaces } = require('../src/places');
@@ -34,7 +35,7 @@ async function main() {
   console.log(`${places.length}곳을 ${baseUrl} 에 ${replace ? '교체' : '병합'} 업로드합니다. (무료 서버가 잠들어 있으면 1분 정도 걸릴 수 있습니다)`);
   const res = await fetch(`${baseUrl}/api/admin/places`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-admin-key': key },
+    headers: { 'Content-Type': 'application/json', 'x-admin-key': key, 'x-group': process.env.EATZY_GROUP || 'default' },
     body: JSON.stringify({ mode: replace ? 'replace' : 'merge', places }),
     signal: AbortSignal.timeout(120000),
   });

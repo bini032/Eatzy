@@ -87,7 +87,7 @@ test('카테고리별로 한 곳씩 후보를 뽑는다', async () => {
     const r = await t.call('POST', '/api/rounds', {});
     assert.equal(r.status, 201);
     assert.deepEqual(r.body.round.candidates.map((c) => c.categoryLabel), ['한식', '중식', '양식', '분식']);
-    assert.equal(t.store.state.settings.origin.name, '더존을지타워');
+    assert.equal(t.store.state.groups.default.settings.origin.name, '더존을지타워');
   } finally {
     t.close();
   }
@@ -356,18 +356,25 @@ test('Upstash Redis 저장소: 시작 시 불러오고, 바뀔 때마다 최신 
 
   const a = new Store('/nonexistent/state.json', { redis });
   await a.init();
-  assert.equal(a.state.round, null);
-  a.state.history.push({ n: 1 });
+  assert.equal(a.state.groups.default.round, null);
+  a.state.groups.default.history.push({ n: 1 });
   a.save();
-  a.state.history.push({ n: 2 });
+  a.state.groups.default.history.push({ n: 2 });
   a.save();
   await a.flush();
-  assert.equal(JSON.parse(kv.get('eatzy:test')).history.length, 2, '마지막 상태가 저장됨');
+  assert.equal(JSON.parse(kv.get('eatzy:test')).groups.default.history.length, 2, '마지막 상태가 저장됨');
 
   const b = new Store('/nonexistent/state.json', { redis });
   await b.init();
-  assert.equal(b.state.history.length, 2);
-  assert.deepEqual(b.state.menus, {});
+  assert.equal(b.state.groups.default.history.length, 2);
+  assert.deepEqual(b.state.groups.default.menus, {});
+
+  // 예전 형식(그룹 없는 상태)은 기본 그룹으로 옮겨진다
+  kv.set('eatzy:test', JSON.stringify({ history: [{ n: 'old' }], places: [] }));
+  const c = new Store('/nonexistent/state.json', { redis });
+  await c.init();
+  assert.deepEqual(c.state.groups.default.history, [{ n: 'old' }]);
+  assert.equal(c.state.groups.default.round, null);
 });
 
 test('Upstash Redis 저장소: 불러오기에 실패하면 시작하지 않도록 오류를 던진다', async () => {
@@ -546,7 +553,7 @@ test('월간 통계: 결정 횟수, 가게/카테고리/메뉴 랭킹을 한국 
       await t.call('POST', `/api/rounds/${round.id}/complete`, { key: 'hs' });
     }
     // 예전 형식 기록(후보 정보 없음)도 섞여 있을 수 있다
-    t.store.state.history.unshift({ roundId: 'old', decidedAt: '2020-01-15T03:00:00Z', winner: { id: 'x', name: '옛가게', categoryLabel: '분식', votes: 2 }, totalVotes: 3 });
+    t.store.state.groups.default.history.unshift({ roundId: 'old', decidedAt: '2020-01-15T03:00:00Z', winner: { id: 'x', name: '옛가게', categoryLabel: '분식', votes: 2 }, totalVotes: 3 });
 
     const r = await t.call('GET', '/api/stats');
     assert.equal(r.status, 200);
@@ -737,6 +744,58 @@ test('선택 적중 랭킹: 이름별로 내가 고른 가게가 결정된 비�
     ]);
     assert.equal(byName.SB.rounds, 2);
     assert.equal(st.people.at(-1).name, 'CC');
+  } finally {
+    t.close();
+  }
+});
+
+test('그룹: 새 그룹을 만들면 따로 투표·통계를 쓰고, 그룹 관리자 키로만 관리한다', async () => {
+  const t = await setup({ noKakao: true, places: MENU_LIST });
+  try {
+    const g = (method, p, body, group, headers = {}) =>
+      realFetch(t.base + p, {
+        method,
+        headers: { 'Content-Type': 'application/json', ...(group ? { 'x-group': group } : {}), ...headers },
+        body: body ? JSON.stringify(body) : undefined,
+      }).then(async (r) => ({ status: r.status, body: await r.json() }));
+
+    let r = await g('POST', '/api/groups', { name: '   ' });
+    assert.equal(r.status, 400);
+    r = await g('POST', '/api/groups', { name: '  개발팀   점심 ', owner: '홍길동' });
+    assert.equal(r.status, 201);
+    const { id, adminToken } = r.body;
+    assert.match(id, /^[a-z0-9]{6,8}$/);
+    assert.equal(r.body.name, '개발팀 점심');
+
+    r = await g('GET', '/api/state', null, id);
+    assert.deepEqual(r.body.group, { id, name: '개발팀 점심', isDefault: false });
+    assert.equal(r.body.placesCount, 4, '새 그룹도 기본 가게 목록에서 시작');
+
+    r = await g('GET', '/api/state', null, 'nope123');
+    assert.equal(r.status, 404);
+    assert.equal(r.body.code, 'no_group');
+
+    // 그룹 투표는 기본 그룹과 분리된다
+    const round = (await g('POST', '/api/rounds', {}, id)).body.round;
+    await g('POST', `/api/rounds/${round.id}/vote`, { voterId: V1, name: '가', candidateId: round.candidates[0].id }, id);
+    const def = (await g('GET', '/api/state')).body;
+    assert.equal(def.round, null, '기본 그룹에는 투표 없음');
+    r = await g('POST', `/api/rounds/${round.id}/vote`, { voterId: V1, name: '가', candidateId: round.candidates[0].id });
+    assert.equal(r.status, 409, '다른 그룹의 투표 id로는 투표 불가');
+
+    // 그룹 관리자 키: 그 그룹에서만 통한다. 전체 관리자 키(hs)는 모든 그룹에서 통한다
+    assert.equal((await g('GET', '/api/admin/check', null, id, { 'x-admin-key': adminToken })).status, 200);
+    assert.equal((await g('GET', '/api/admin/check', null, 'default', { 'x-admin-key': adminToken })).status, 403);
+    assert.equal((await g('GET', '/api/admin/check', null, id, { 'x-admin-key': 'hs' })).status, 200);
+    r = await g('POST', `/api/rounds/${round.id}/complete`, { key: adminToken }, id);
+    assert.equal(r.status, 200);
+    assert.equal((await g('GET', '/api/stats', null, id)).body.summary.decisions, 1);
+    assert.equal((await g('GET', '/api/stats')).body.summary.decisions, 0);
+
+    // 그룹 링크도 같은 화면을 준다
+    const page = await realFetch(`${t.base}/g/${id}`);
+    assert.equal(page.status, 200);
+    assert.match(await page.text(), /<html/);
   } finally {
     t.close();
   }

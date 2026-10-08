@@ -351,6 +351,77 @@ dialog h3 { font-size: 18px; }
 .rank-bar > span { display: block; height: 100%; border-radius: 4px; background: hsl(var(--primary)); }
 .rank-empty { font-size: 13px; color: hsl(var(--muted-foreground)); }
 
+/* ---------- 그룹 / 이름 등록 ---------- */
+.group-badge {
+  display: inline-flex;
+  align-items: center;
+  margin: 8px 0 0;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  background: hsl(var(--secondary));
+  font-size: 13px;
+  font-weight: 600;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.user-group { margin-top: 10px; }
+.user-mode { margin-top: 12px; padding-top: 12px; border-top: 1px solid hsl(var(--border)); }
+#userDialog input + input, #userDialog div > input { margin-top: 6px; }
+
+/* ---------- 가게 정보 미리보기 ---------- */
+.name-btn {
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  white-space: normal;
+  cursor: pointer;
+  display: inline;
+}
+.name-btn:hover { background: none; text-decoration: underline; text-underline-offset: 4px; }
+.info-i { font-size: 0.7em; color: hsl(var(--muted-foreground)); vertical-align: 0.15em; }
+.place-pop {
+  position: absolute;
+  z-index: 50;
+  width: min(340px, calc(100vw - 16px));
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 14px 16px;
+  border: 1px solid hsl(var(--border));
+  border-radius: calc(var(--radius) + 4px);
+  background: hsl(var(--background));
+  box-shadow: 0 10px 38px -10px rgb(0 0 0 / 0.35), 0 10px 20px -15px rgb(0 0 0 / 0.2);
+  font-size: 14px;
+}
+.place-pop p, .place-dialog p { margin: 4px 0; }
+.pop-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.pop-head h3 { margin: 0; font-size: 17px; }
+.pop-menus { list-style: none; margin: 4px 0 8px; padding: 0; }
+.pop-menus li { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-bottom: 1px dashed hsl(var(--border)); font-size: 14px; }
+.pop-menus li strong { font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+.pop-links { display: flex; gap: 14px; margin-top: 6px; font-size: 13px; font-weight: 500; }
+.pop-links a { color: hsl(var(--foreground)); text-underline-offset: 3px; }
+.place-dialog { width: min(440px, calc(100vw - 32px)); max-height: 85vh; }
+.place-dialog .label { margin-top: 8px; }
+
+/* 휴대폰: 가게 정보는 화면 아래에서 올라오는 창으로 */
+@media (max-width: 600px) {
+  .place-dialog {
+    margin: auto 0 0;
+    width: 100vw;
+    max-width: 100vw;
+    max-height: 80vh;
+    border-radius: 16px 16px 0 0;
+    border-bottom: 0;
+  }
+}
+
 /* ---------- Admin ---------- */
 .admin { margin-top: 32px; }
 .admin summary { cursor: pointer; font-weight: 600; list-style: none; display: flex; align-items: center; gap: 8px; }

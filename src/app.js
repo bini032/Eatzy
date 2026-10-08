@@ -1,5 +1,6 @@
 const path = require('path');
 const crypto = require('crypto');
+const { AsyncLocalStorage } = require('async_hooks');
 const express = require('express');
 const { AppError } = require('./errors');
 const kakao = require('./kakao');
@@ -9,6 +10,10 @@ const { reverseGeocode } = require('./geocode');
 const { buildStats, kstMonth } = require('./stats');
 const { estimateTotal } = require('./price');
 const { translate, pickLang } = require('./i18n');
+const { defaultState } = require('./store');
+
+const MAX_GROUPS = 200;
+const sha256 = (v) => crypto.createHash('sha256').update(String(v)).digest('hex');
 
 const MAX_MENUS_PER_VOTE = 10;
 const MAX_MANUAL_CANDIDATES = 12;
@@ -55,8 +60,45 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
   const app = express();
   app.use(express.json({ limit: '1mb' })); // 가게 목록 일괄 업로드 때문에 넉넉하게
   app.use(express.static(path.join(__dirname, '..', 'public')));
+  // 그룹 링크(/g/그룹id)도 같은 화면을 쓴다. 화면이 주소에서 그룹 id를 읽어 API에 x-group으로 보낸다
+  app.get('/g/:id', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
 
-  const state = () => store.state;
+  // 요청마다 그룹 상태를 고른다. 이후 코드는 state()로 현재 그룹 상태에 접근한다
+  const groupCtx = new AsyncLocalStorage();
+  const state = () => groupCtx.getStore().state;
+  const groupId = () => groupCtx.getStore().id;
+
+  // 관리자 키: 전체 관리자 키(ADMIN_KEY) 또는 그 그룹을 만들 때 받은 그룹 관리자 키
+  function isAdminKey(key) {
+    if (keyMatches(key, adminKey)) return true;
+    const meta = state().meta;
+    return Boolean(meta && meta.adminTokenHash && key && keyMatches(sha256(key), meta.adminTokenHash));
+  }
+
+  // 새 그룹 만들기: 만든 사람이 받은 관리자 키로 그 그룹을 관리한다 (그룹 미들웨어보다 먼저)
+  app.post('/api/groups', (req, res) => {
+    const name = String(req.body?.name || '').trim().replace(/\s+/g, ' ').slice(0, 40);
+    if (!name) throw new AppError(400, '그룹 이름을 입력해 주세요.');
+    const groups = store.state.groups;
+    if (Object.keys(groups).length > MAX_GROUPS) throw new AppError(429, '그룹을 더 만들 수 없습니다.');
+    let id;
+    do id = crypto.randomBytes(6).toString('base64url').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8);
+    while (id.length < 6 || groups[id]);
+    const token = crypto.randomBytes(24).toString('base64url');
+    groups[id] = {
+      ...defaultState(),
+      meta: { name, owner: String(req.body?.owner || '').trim().slice(0, 20), createdAt: new Date().toISOString(), adminTokenHash: sha256(token) },
+    };
+    store.save();
+    res.status(201).json({ id, name, adminToken: token });
+  });
+
+  app.use('/api', (req, res, next) => {
+    const id = String(req.get('x-group') || req.query.g || 'default');
+    const groupState = store.state.groups[id];
+    if (!groupState) throw new AppError(404, '그룹을 찾을 수 없습니다.', 'no_group');
+    groupCtx.run({ id, state: groupState }, next);
+  });
 
   const kakaoEnabled = () => Boolean(process.env.KAKAO_REST_API_KEY);
 
@@ -73,7 +115,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
 
   function requireAdmin(req) {
     const key = req.get('x-admin-key') ?? req.body?.key;
-    if (!keyMatches(key, adminKey)) throw new AppError(403, '관리자 키가 올바르지 않습니다.');
+    if (!isAdminKey(key)) throw new AppError(403, '관리자 키가 올바르지 않습니다.');
   }
 
   // 저장된 목록이 비어 있으면 restaurants.json을 기준으로 삼는다.
@@ -119,7 +161,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     const voterId = String(req.body?.voterId || '');
     if (!/^[\w-]{8,64}$/.test(voterId)) throw new AppError(400, '투표자 정보가 올바르지 않습니다.');
     const name = cleanName(req.body?.name);
-    if (name.toLowerCase() === ADMIN_NAME && !keyMatches(req.body?.key, adminKey)) {
+    if (name.toLowerCase() === ADMIN_NAME && !isAdminKey(req.body?.key)) {
       throw new AppError(403, 'SB는 관리자 전용 이름입니다. 관리자 키를 입력해 주세요.');
     }
     return { voterId, name };
@@ -187,6 +229,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     const s = state();
     const src = placeSource();
     res.json({
+      group: { id: groupId(), name: s.meta ? s.meta.name : null, isDefault: groupId() === 'default' },
       source: src.type,
       placesOrigin: src.origin,
       placesCount: src.places.length,
@@ -300,7 +343,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     const active = s.round && s.round.status === 'voting' && Object.keys(s.round.votes).length > 0;
     // 오늘 완료된 결과는 관리자만 새 투표로 넘길 수 있다 (다음 날부터는 누구나 시작 가능)
     const doneToday = s.round && s.round.status === 'done' && kstDate(s.round.finishedAt) === kstDate(Date.now());
-    if ((active || doneToday) && !keyMatches(req.body?.key, adminKey)) {
+    if ((active || doneToday) && !isAdminKey(req.body?.key)) {
       if (doneToday) throw new AppError(403, CLOSED_MESSAGE, 'closed');
       throw new AppError(403, '이미 투표가 진행 중입니다. 다시 뽑으려면 관리자 키가 필요합니다.');
     }
@@ -361,7 +404,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
   // 관리자가 후보 가게의 메뉴를 직접 입력/수정. 다음에 같은 가게가 나와도 이 메뉴를 쓴다.
   app.post('/api/rounds/:id/candidates/:cid/menus', (req, res) => {
     const round = currentRound(req.params.id);
-    if (!keyMatches(req.body?.key, adminKey)) throw new AppError(403, '관리자 키가 올바르지 않습니다.');
+    if (!isAdminKey(req.body?.key)) throw new AppError(403, '관리자 키가 올바르지 않습니다.');
     const candidate = round.candidates.find((c) => c.id === req.params.cid);
     if (!candidate) throw new AppError(404, '후보에 없는 가게입니다.');
     // 결정 후에는 결정된 가게의 메뉴만 고칠 수 있다
@@ -518,7 +561,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
 
   app.post('/api/rounds/:id/complete', (req, res) => {
     const round = currentRound(req.params.id);
-    if (!keyMatches(req.body?.key, adminKey)) throw new AppError(403, '관리자 키가 올바르지 않습니다.');
+    if (!isAdminKey(req.body?.key)) throw new AppError(403, '관리자 키가 올바르지 않습니다.');
     if (round.status !== 'voting') throw closedError();
     const t = tally(round);
     if (t.totalVotes === 0) throw new AppError(409, '아직 투표가 없습니다.');

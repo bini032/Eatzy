@@ -34,6 +34,7 @@ README의 "다른 사람들에게 링크로 공유하기"를 따른다.
 
 ## 구조 메모
 
+- 저장 문서는 `{ groups: { default: 그룹상태, <그룹id>: 그룹상태 } }`이다. API는 `x-group` 헤더(화면은 주소 `/g/그룹id`에서 읽음)로 그룹을 고르고, 서버 코드는 AsyncLocalStorage로 현재 그룹 상태를 `state()`로 쓴다. 그룹 관리자 키는 해시(`meta.adminTokenHash`)로만 저장한다.
 - 상태는 `DATA_DIR/state.json` 하나에 저장된다. `UPSTASH_REDIS_REST_URL`/`TOKEN`이 있으면 Upstash Redis의 키 하나에 저장된다(`src/store.js`). 어느 쪽이든 단일 서버 전제.
 - 앱에서 추가하거나 편집한 메뉴는 상태의 `menus`에 저장되고, 가게 목록 파일의 `menus`보다 우선한다.
 - 후보 출처 우선순위는 저장된 목록(상태의 `places`) > `restaurants.json` > 카카오 실시간 검색이다(`src/app.js`의 `placeSource`).
