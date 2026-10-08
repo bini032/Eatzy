@@ -5,71 +5,466 @@
     "address": "서울 중구 을지로5길 26 지하2층 (미래에셋 센터원)",
     "url": "https://superchart.com/ko/@seoul-street-passes/baegok-euljiro-pork-gomtang-toryeom/",
     "memo": "돼지곰탕 전문 · 을지로입구역 4번 출구 도보 약 3분 · 주말 휴무(소개글 기준)",
-    "menus": ["돼지곰탕"]
+    "menus": [
+      "돼지곰탕 12,000원",
+      "열곰탕 13,000원"
+    ]
   },
   {
-    "name": "규반 을지로입구역",
+    "name": "무교동북어국집",
     "category": "한식",
-    "address": "서울 중구 을지로1가 87",
-    "url": "https://www.diningcode.com/list.dc?query=%EC%9D%84%EC%A7%80%EB%A1%9C%EC%9E%85%EA%B5%AC%EC%97%AD+%ED%95%9C%EC%A0%95%EC%8B%9D",
-    "memo": "한정식 · 평일 점심 11:30부터, 일요일·공휴일 휴무(검색 정보 기준)"
+    "address": "서울 중구 을지로1길 38",
+    "phone": "02-777-3891",
+    "url": "https://www.diningcode.com/profile.php?rid=y1YCSnBe9TWq",
+    "memo": "1968년부터 북어국 한 가지 · 출처마다 가격 차이(9,500~11,000원)",
+    "menus": [
+      "북어해장국 11,000원"
+    ]
   },
   {
-    "name": "남포면옥",
+    "name": "부민옥",
     "category": "한식",
-    "address": "서울 중구 을지로3길 24",
-    "url": "https://guide.michelin.com/kr/ko/seoul-capital-area/kr-seoul/restaurant/nampo-myeonok",
-    "memo": "이북식 냉면·어복쟁반",
-    "menus": ["냉면", "어복쟁반"]
+    "address": "서울 중구 다동길 24-12 1층",
+    "phone": "02-777-2345",
+    "url": "https://www.diningcode.com/profile.php?rid=cceotfjlubqj",
+    "memo": "1956년 노포 · 일요일 휴무, 브레이크 14:00~17:00(출처마다 다름)",
+    "menus": [
+      "육개장 11,000원",
+      "양곰탕 12,000원",
+      "선지국 9,000원"
+    ]
+  },
+  {
+    "name": "애성회관 한우곰탕",
+    "category": "한식",
+    "address": "서울 중구 남대문로5길 23 1층 (세창빌딩)",
+    "phone": "02-352-0303",
+    "url": "https://www.diningcode.com/profile.php?rid=7hVyqU2qXf1W",
+    "memo": "북창동 · 일요일 휴무, 평일 브레이크 14:30~17:00",
+    "menus": [
+      "한우곰탕 10,000원",
+      "한우특곰탕 12,000원"
+    ]
+  },
+  {
+    "name": "명동교자 본점",
+    "category": "한식",
+    "address": "서울 중구 명동10길 29",
+    "phone": "0507-1366-5348",
+    "url": "https://www.diningcode.com/profile.php?rid=L4miF0diqkcW",
+    "memo": "미쉐린 빕구르망 · 본관 공사 중 신관에서 영업한다는 정보 있음 · 콩국수는 계절 메뉴",
+    "menus": [
+      "칼국수 12,000원",
+      "비빔국수 12,000원",
+      "만두 13,000원",
+      "콩국수 13,000원"
+    ]
+  },
+  {
+    "name": "미성옥",
+    "category": "한식",
+    "address": "서울 중구 명동길 25-11",
+    "phone": "02-776-8929",
+    "url": "https://www.diningcode.com/profile.php?rid=KhCvIeW4YVI7",
+    "memo": "1966년 설렁탕집",
+    "menus": [
+      "설렁탕 보통 13,000원",
+      "설렁탕 특 15,000원"
+    ]
+  },
+  {
+    "name": "명동함흥면옥",
+    "category": "한식",
+    "address": "서울 중구 명동10길 35-19",
+    "phone": "02-776-8430",
+    "url": "https://www.diningcode.com/profile.php?rid=ftgnrUZMFFWI",
+    "memo": "함흥냉면·손만두 · 일요일 휴무(기사 기준)",
+    "menus": [
+      "물냉면 13,000원",
+      "비빔냉면 13,000원",
+      "회냉면 14,000원"
+    ]
+  },
+  {
+    "name": "인천집",
+    "category": "한식",
+    "address": "서울 중구 다동길 36 2층",
+    "phone": "02-776-6583",
+    "url": "https://www.diningcode.com/profile.php?rid=LMdSl90on3Sm",
+    "memo": "점심엔 조개칼국수 · 휴무일은 출처마다 다름",
+    "menus": [
+      "조개칼국수 10,000원",
+      "떡만둣국 10,000원"
+    ]
+  },
+  {
+    "name": "대원집",
+    "category": "한식",
+    "address": "서울 중구 을지로3길 30-4",
+    "phone": "02-777-2038",
+    "url": "https://www.diningcode.com/profile.php?rid=JNG1m1aBT5V6",
+    "memo": "1968년 노포 · 점심엔 제육철판 한 가지 · 일요일 휴무",
+    "menus": [
+      "제육철판 12,000원"
+    ]
+  },
+  {
+    "name": "무교동닭곰탕",
+    "category": "한식",
+    "address": "서울 중구 다동길 21 1·2층",
+    "phone": "02-318-3353",
+    "url": "https://www.diningcode.com/profile.php?rid=3Fa1swwzUzlX",
+    "memo": "09:00~15:00 · 토·일 휴무(2025년 후기 기준)",
+    "menus": [
+      "닭곰탕 10,000원",
+      "닭개장 11,000원"
+    ]
+  },
+  {
+    "name": "고냉지 을지로입구점",
+    "category": "한식",
+    "address": "서울 중구 남대문로 116 2층",
+    "phone": "02-730-9239",
+    "url": "https://www.diningcode.com/profile.php?rid=gwX5jFwyoDuN",
+    "memo": "점심 김치찌개에 비빔밥 한 그릇 · 계단이 가파름 · 7,000원 표기도 있어 확인 필요",
+    "menus": [
+      "김치찌개 10,000원"
+    ]
+  },
+  {
+    "name": "서울고기집",
+    "category": "한식",
+    "address": "서울 중구 남대문로9길 12 1층 (나전빌딩)",
+    "url": "https://www.diningcode.com/profile.php?rid=8qrPpUpYK7yv",
+    "memo": "점심 돼지김치찌개 + 솥밥, 저녁엔 고깃집",
+    "menus": [
+      "돼지김치찌개 10,000원"
+    ]
+  },
+  {
+    "name": "이영자삼계탕",
+    "category": "한식",
+    "address": "서울 중구 남대문로 117 지하1층 (동아빌딩)",
+    "phone": "02-779-2251",
+    "url": "https://www.diningcode.com/profile.php?rid=Zs2AixE59HEO",
+    "memo": "반찬 많은 백반집 스타일 · 평일 07:00~21:00",
+    "menus": [
+      "삼계탕 13,000원"
+    ]
   },
   {
     "name": "안동장",
     "category": "중식",
     "address": "서울 중구 을지로 124",
-    "url": "https://kr.trip.com/moments/detail/seoul-234-119157495/",
+    "url": "https://www.diningcode.com/profile.php?rid=oL1J1ndYQNgv",
     "memo": "1948년부터 이어진 노포 · 을지로3가 쪽이라 조금 걸어야 함",
-    "menus": ["굴짬뽕", "짜장면"]
+    "menus": [
+      "짬뽕 10,000원",
+      "삼선짬뽕 11,000원",
+      "굴짬뽕 12,000원",
+      "매운굴짬뽕 12,000원",
+      "간짜장 12,000원",
+      "굴짬뽕밥 12,000원"
+    ]
   },
   {
     "name": "만복림",
     "category": "중식",
     "address": "서울 중구 무교로 17-17",
-    "phone": "02-777-6661",
+    "phone": "0507-1317-6661",
     "url": "https://www.diningcode.com/profile.php?rid=phSv8SvanJiK",
-    "memo": "무교동 · 시청역 근처",
-    "menus": ["짜장면", "짬뽕", "삼선짬뽕"]
+    "memo": "무교동 · 11:00~22:00 · 짬뽕 가격은 후기마다 다름",
+    "menus": [
+      "자장면 9,000원",
+      "삼선짬뽕 11,000원",
+      "삼선볶음밥 11,000원",
+      "팔진탕면 13,000원",
+      "마파두부밥 14,000원"
+    ]
   },
   {
     "name": "북경",
     "category": "중식",
-    "address": "서울 중구 세종대로20길 23 원창빌딩",
+    "address": "서울 중구 세종대로20길 23 (원창빌딩 지하)",
     "phone": "02-752-8434",
     "url": "https://www.diningcode.com/profile.php?rid=wMHGpbtnBrF8",
-    "memo": "무교동 · 서울시청 뒤편",
-    "menus": ["짜장면"]
+    "memo": "무교동 · 서울시청 뒤편 · 10:30~21:00",
+    "menus": [
+      "고추간짜장 10,000원",
+      "홍합짬뽕밥 11,000원",
+      "삼선볶음밥 13,000원",
+      "삼선짬뽕밥 14,000원"
+    ]
   },
   {
-    "name": "고량주관",
+    "name": "원흥",
     "category": "중식",
-    "address": "서울 종로구 청계천로 77-3 1층",
-    "url": "https://polle.com/place/4ySbBS/%EA%B3%A0%EB%9F%89%EC%A3%BC%EA%B4%80",
-    "memo": "중국 본토식 요리 · 월~토 11:00~23:00, 일요일 휴무(후기 기준)",
-    "menus": ["마파두부"]
+    "address": "서울 중구 다동길 46 (다동빌딩)",
+    "url": "https://www.siksinhot.com/P/316985",
+    "memo": "다동 화상 중식당 · 고기튀김과 짬뽕 · 일요일 휴무(시점 불명)",
+    "menus": [
+      "짬뽕 9,000원"
+    ]
   },
   {
-    "name": "파스타 타타",
-    "category": "양식",
-    "address": "서울 중구 남대문로9길 6 1층 (스몰하우스 빅도어)",
-    "url": "https://www.diningcode.com/profile.php?rid=pqDitiyVrtbQ",
-    "memo": "생면 파스타 · 브레이크타임 있음(자료마다 시간이 달라 확인 필요)"
+    "name": "초류향",
+    "category": "중식",
+    "address": "서울 중구 다동길 24-10",
+    "url": "https://www.diningcode.com/profile.php?rid=CuRVzdQzqDBZ",
+    "memo": "1989년 개업 · 점심 탕면 메뉴",
+    "menus": [
+      "대만식 쇠고기탕면 12,000원",
+      "새우완자탕면 12,000원"
+    ]
   },
   {
-    "name": "마노디셰프 명동점",
+    "name": "개화",
+    "category": "중식",
+    "address": "서울 중구 남대문로 52-5",
+    "phone": "02-776-0508",
+    "url": "https://www.diningcode.com/profile.php?rid=reUE33WZY1CG",
+    "memo": "60년 넘은 화교 중식당, 중국대사관 근처 · 토요일 휴무 정보는 출처마다 다름 · 행화촌·향미와 같은 주소로 나와 층 확인 필요",
+    "menus": [
+      "짜장면 7,000원",
+      "볶음밥 8,000원",
+      "잡채밥 10,000원"
+    ]
+  },
+  {
+    "name": "행화촌",
+    "category": "중식",
+    "address": "서울 중구 남대문로 52-5 2층",
+    "phone": "02-771-0172",
+    "url": "https://www.diningcode.com/profile.php?rid=fyyp6Mh5oi67",
+    "memo": "화상 노포, 짜장이 유명 · 브레이크 15:00~17:00",
+    "menus": [
+      "짜장면 6,000원",
+      "짬뽕 8,500원",
+      "간짜장 8,500원",
+      "삼선짜장 10,500원"
+    ]
+  },
+  {
+    "name": "향미",
+    "category": "중식",
+    "address": "서울 중구 남대문로 52-5 1층",
+    "phone": "02-773-8835",
+    "url": "https://www.diningcode.com/profile.php?rid=xHAcBBHlmqfv",
+    "memo": "중앙우체국 맞은편 빨간 건물 · 일요일 휴무, 브레이크 15:00~17:00",
+    "menus": [
+      "짜장면 7,000원",
+      "꿔티에 8,000원",
+      "우육면 11,000원"
+    ]
+  },
+  {
+    "name": "산동교자",
+    "category": "중식",
+    "address": "서울 중구 명동2길 26",
+    "url": "https://www.diningcode.com/profile.php?rid=2nrKYyY3cev7",
+    "memo": "명동 중국대사관 쪽 · 도로명 번호가 출처마다 다름(명동2길 22/26)",
+    "menus": [
+      "짜장면 7,000원",
+      "짬뽕 8,500원",
+      "삼선짜장 9,000원",
+      "삼선짬뽕 10,000원",
+      "굴짬뽕 11,000원"
+    ]
+  },
+  {
+    "name": "꽁시면관 본점",
+    "category": "중식",
+    "address": "서울 중구 명동2길 45",
+    "phone": "02-778-8863",
+    "url": "https://www.diningcode.com/profile.php?rid=P4Bo3YW7YZTW",
+    "memo": "소룡포·도삭면 · 점심 대기 있음 · 10:30~22:00",
+    "menus": [
+      "짜장면 8,000원",
+      "매운자장면 8,500원",
+      "소룡포 9,000원",
+      "새우볶음밥 9,500원",
+      "사천탕면 11,000원"
+    ]
+  },
+  {
+    "name": "란주칼면",
+    "category": "중식",
+    "address": "서울 중구 소공로 64 (동남빌딩)",
+    "url": "https://www.siksinhot.com/P/25074",
+    "memo": "도삭면 전문(옛 란주라미엔) · 대기 있음 · 신세계백화점 근처라 약 1km · 가격은 오래된 정보",
+    "menus": [
+      "삼선해물자장도삭면 9,000원",
+      "마라탕도삭면 11,000원",
+      "쯔란양고기도삭면 13,000원"
+    ]
+  },
+  {
+    "name": "일일향 을지로점",
+    "category": "중식",
+    "address": "서울 중구 남대문로 125 3층 (DGB)",
+    "phone": "0507-1498-7754",
+    "url": "https://polle.com/place/234TEO/%EC%9D%BC%EC%9D%BC%ED%96%A5",
+    "memo": "체인 중식당 · 종각역과 을지로입구역 사이",
+    "menus": [
+      "자장면 9,000원",
+      "옛날짬뽕 11,000원",
+      "하얀짬뽕 13,000원",
+      "고추간짜장 13,000원"
+    ]
+  },
+  {
+    "name": "북경원",
+    "category": "중식",
+    "address": "서울 중구 남대문로1길 13 1층",
+    "phone": "02-319-2009",
+    "url": "https://www.diningcode.com/profile.php?rid=VbJy72mMevJp",
+    "memo": "북창동 · 고기튀김이 시그니처 · 주말·공휴일 휴무 · 약 1km · 가격은 오래된 정보일 수 있음",
+    "menus": [
+      "짜장면 6,000원",
+      "짬뽕 7,000원"
+    ]
+  },
+  {
+    "name": "오구반점",
+    "category": "중식",
+    "address": "서울 중구 수표로 60",
+    "phone": "02-2267-0516",
+    "url": "https://www.diningcode.com/profile.php?rid=fACPeLst7juv",
+    "memo": "을지로3가 3대째 노포, 군만두가 대표 · 일요일 휴무 · 카드 안 된다는 표기 있음 · 약 1km",
+    "menus": [
+      "짜장면 8,000원",
+      "유니짜장 9,500원",
+      "삼선짜장 11,000원",
+      "군만두 11,000원"
+    ]
+  },
+  {
+    "name": "데일리픽스 을지로점",
     "category": "양식",
-    "address": "서울 중구 명동길 26 11층 (유네스코회관)",
-    "url": "https://www.diningcode.com/profile.php?rid=AyhzYS45Gbag",
-    "memo": "이탈리안 · 을지로입구역 5·6번 출구 쪽",
-    "menus": ["파스타", "스테이크", "피자"]
+    "address": "서울 중구 남대문로9길 24 1층",
+    "url": "https://www.diningcode.com/profile.php?rid=kHirMOd5x6u5",
+    "memo": "한우 패티 수제버거 · 세트는 15,000원이 넘을 수 있음",
+    "menus": [
+      "클래식 치즈버거 11,900원",
+      "치킨버거 11,900원",
+      "베이컨 치즈버거 12,900원",
+      "트러플 머쉬룸 버거 13,900원"
+    ]
+  },
+  {
+    "name": "을지돈가스 명동본점",
+    "category": "양식",
+    "address": "서울 중구 명동9길 10 1층",
+    "phone": "0507-1470-9972",
+    "url": "https://www.diningcode.com/profile.php?rid=maY2dlB7NvHP",
+    "memo": "경양식 왕돈가스 · 11:00~22:00",
+    "menus": [
+      "을지왕돈가스 14,000원",
+      "매운왕돈가스 15,000원"
+    ]
+  },
+  {
+    "name": "써브웨이 을지로입구점",
+    "category": "양식",
+    "address": "서울 중구 남대문로 112 1층",
+    "phone": "02-730-8777",
+    "url": "https://www.diningcode.com/profile.php?rid=qrUkVEaTyJwr",
+    "memo": "샌드위치·샐러드 · 가격이 다른 지점과 섞였을 수 있음",
+    "menus": [
+      "에그마요 15cm 6,800원",
+      "베지 샐러드 8,100원",
+      "터키 샐러드 9,900원",
+      "샐러드 세트 12,400원"
+    ]
+  },
+  {
+    "name": "브루클린더버거조인트 청계천점",
+    "category": "양식",
+    "address": "서울 중구 청계천로 14",
+    "phone": "02-318-7180",
+    "url": "https://www.diningcode.com/profile.php?rid=8gfSBZhW6ohD",
+    "memo": "청계광장 근처 수제버거 · 11:00~21:30 · 가격은 출처마다 다름",
+    "menus": [
+      "더 치즈버거 9,800원",
+      "브루클린 웍스 12,500원",
+      "램버거 14,300원"
+    ]
+  },
+  {
+    "name": "우정함박 페럼타워점",
+    "category": "양식",
+    "address": "서울 중구 수하동 39-2 2층",
+    "url": "https://www.diningcode.com/profile.php?rid=idUG6ZmxfsHH",
+    "memo": "페럼타워 옆 함박·돈까스 · 점심 줄 서는 편",
+    "menus": [
+      "수제돈까스 12,900원",
+      "매콤돈까스 12,900원",
+      "수제데미함박스테이크 13,900원",
+      "수제로제함박스테이크 13,900원"
+    ]
+  },
+  {
+    "name": "맘스터치LAB 명동점",
+    "category": "양식",
+    "address": "서울 중구 명동9길 37",
+    "phone": "02-318-3799",
+    "url": "https://www.diningcode.com/profile.php?rid=gxoOd0VNC3g0",
+    "memo": "버거 프랜차이즈 · 2024년 6월 개점, 3개 층",
+    "menus": [
+      "싸이버거 6,000원",
+      "화이트갈릭싸이버거 6,600원",
+      "불싸이버거 세트 9,200원",
+      "싸이플렉스버거 9,700원"
+    ]
+  },
+  {
+    "name": "로키버거",
+    "category": "양식",
+    "address": "서울 중구 을지로 95-2 1층",
+    "url": "https://www.diningcode.com/profile.php?rid=PJtkDvEGTfwv",
+    "memo": "수제버거 · 을지로3가 쪽이라 약 1km",
+    "menus": [
+      "로키 클래식 버거 싱글 11,500원",
+      "로키 치즈 홀릭 싱글 12,500원"
+    ]
+  },
+  {
+    "name": "파작",
+    "category": "양식",
+    "address": "서울 종로구 청계천로 57 1층",
+    "url": "https://www.diningcode.com/profile.php?rid=QBGKibLikCW2",
+    "memo": "화덕 샌드위치·샐러드 · 청계천 북쪽(종각역 쪽) 약 1km",
+    "menus": [
+      "RTM 11,800원",
+      "애플민트 스리라차 닭가슴살 샐러드 13,800원",
+      "샌프란시스코 크랩 샐러드 14,300원"
+    ]
+  },
+  {
+    "name": "보노보스버거",
+    "category": "양식",
+    "address": "서울 중구 남대문로 30 1층",
+    "phone": "02-3789-0707",
+    "url": "https://www.diningcode.com/profile.php?rid=L1wtm0X4SOo2",
+    "memo": "남대문시장 쪽 수제버거 · 약 1km · 11:00~20:00",
+    "menus": [
+      "클래식 버거 9,100원",
+      "베이컨치즈 버거 10,800원",
+      "하와이안 버거 12,500원"
+    ]
+  },
+  {
+    "name": "니즈버거 을지로점",
+    "category": "양식",
+    "address": "서울 중구 마른내로 13 1층",
+    "url": "https://www.diningcode.com/profile.php?rid=WiVNS6Kpn3NB",
+    "memo": "수제버거 · 을지로3가역 쪽이라 1km를 넘을 수 있음",
+    "menus": [
+      "니즈버거 8,900원",
+      "피넛버터 버거 8,900원",
+      "화이트 머쉬룸 버거 8,900원",
+      "하와이안버거 9,900원"
+    ]
   },
   {
     "name": "김밥일번가",
@@ -77,7 +472,11 @@
     "address": "서울 중구 남대문로 112-1",
     "url": "https://www.diningcode.com/profile.php?rid=zaJR782F3WR3",
     "memo": "을지로입구역 3번 출구 도보 약 1분",
-    "menus": ["원조김밥", "들깨미역국", "칼국수"]
+    "menus": [
+      "원조김밥 4,000원",
+      "칼국수 6,500원",
+      "들깨미역국 8,000원"
+    ]
   },
   {
     "name": "현선이네 청계즉석점",
@@ -85,8 +484,10 @@
     "address": "서울 중구 남대문로 112",
     "phone": "0507-1305-2953",
     "url": "https://www.diningcode.com/profile.php?rid=Kcg0DnU3gV3H",
-    "memo": "즉석떡볶이 · 평일 10:40~21:00, 주말 휴무(후기 기준)",
-    "menus": ["즉석떡볶이"]
+    "memo": "평일 10:40~21:00, 주말 휴무(후기 기준)",
+    "menus": [
+      "즉석떡볶이 4,000~8,000원"
+    ]
   },
   {
     "name": "명화당 명동1호점",
@@ -94,6 +495,142 @@
     "address": "서울 중구 명동4길 30 2층",
     "phone": "02-777-7317",
     "url": "https://www.diningcode.com/profile.php?rid=LifcHeoZKADI",
-    "memo": "명동 · 김밥·분식"
+    "memo": "명동 분식 · 가격은 출처마다 조금씩 다름",
+    "menus": [
+      "명화당 김밥 4,800원",
+      "참치김밥 4,800원",
+      "떡볶이 4,800원",
+      "쫄볶이 6,500원",
+      "비빔쫄면 8,000원",
+      "냄비국수 8,500원"
+    ]
+  },
+  {
+    "name": "먹보대장",
+    "category": "분식",
+    "address": "서울 중구 을지로 지하58 (을지로입구지하쇼핑센터 지하1층)",
+    "url": "https://www.diningcode.com/profile.php?rid=Unewz4EmK01N",
+    "memo": "지하상가 계란김밥집 · 점심 대기 있음",
+    "menus": [
+      "먹보김밥 4,500원",
+      "참치김밥 5,500원",
+      "치즈김밥 5,500원",
+      "불어묵김밥 6,000원",
+      "모듬김밥 6,500원"
+    ]
+  },
+  {
+    "name": "싸다김밥 을지로입구역점",
+    "category": "분식",
+    "address": "서울 중구 명동3길 44",
+    "phone": "02-318-3185",
+    "url": "https://www.diningcode.com/profile.php?rid=3HM8vA93vxfY",
+    "memo": "프랜차이즈 · 가격 시점 불명",
+    "menus": [
+      "싸다김밥 4,000원",
+      "라면 4,500원",
+      "라볶이 7,500원",
+      "참치비빔밥 8,500원",
+      "오므라이스 10,000원"
+    ]
+  },
+  {
+    "name": "독일분식 을지로입구지하쇼핑센터점",
+    "category": "분식",
+    "address": "서울 중구 을지로 58 (을지로입구지하쇼핑센터)",
+    "phone": "02-778-1849",
+    "url": "https://polle.com/place/1TedlT/%EB%8F%85%EC%9D%BC%EB%B6%84%EC%8B%9D",
+    "memo": "역 안 작은 분식집 · 평일 07:00~20:00(오래된 정보일 수 있음)",
+    "menus": [
+      "즉석김밥 4,000원",
+      "떡볶이 4,500원",
+      "생우동 6,000원",
+      "라면+공기밥 6,500원",
+      "쫄면 8,000원",
+      "김치볶음밥 8,000원"
+    ]
+  },
+  {
+    "name": "병아리김밥 명동점",
+    "category": "분식",
+    "address": "서울 중구 명동10길 19-3 지하1층",
+    "phone": "02-779-7778",
+    "url": "https://www.diningcode.com/profile.php?rid=2UPwU8w4yba0",
+    "memo": "꼬마김밥 · 08:00~, 라스트오더 20:30",
+    "menus": [
+      "병아리김밥 1,200원",
+      "학교앞 떡볶이 4,500원",
+      "라볶이 5,500원",
+      "명란크림우동 7,500원",
+      "등심돈가스 9,500원"
+    ]
+  },
+  {
+    "name": "신세계떡볶이",
+    "category": "분식",
+    "address": "서울 중구 명동9길 10",
+    "url": "https://www.diningcode.com/profile.php?rid=XZ4FhpOAkMnb",
+    "memo": "쌀떡볶이 · 을지로입구역 5번 출구 · 주소가 출처마다 다름(명동9길 8-1)",
+    "menus": [
+      "떡볶이 5,000원",
+      "순대 5,000원",
+      "만두 3,000원",
+      "오뎅 3,000원"
+    ]
+  },
+  {
+    "name": "정다믄김밥천국 중구점",
+    "category": "분식",
+    "address": "서울 중구 다동길 24-8 1층",
+    "url": "https://www.diningcode.com/profile.php?rid=hSKVhHoC2l3l",
+    "memo": "을지로입구역 1-1번 출구 · 2025년 후기 기준 가격",
+    "menus": [
+      "참치김밥 5,300원",
+      "치즈라볶이 8,500원",
+      "철판제육덮밥 9,000원",
+      "라면/돈까스 세트 9,500원",
+      "생등심돈까스 10,000원"
+    ]
+  },
+  {
+    "name": "낭만김밥",
+    "category": "분식",
+    "address": "서울 중구 명동7길 21 1층 (명동아르누보센텀)",
+    "phone": "02-777-7879",
+    "url": "https://polle.com/place/31dHNx/%EB%82%AD%EB%A7%8C%EA%B9%80%EB%B0%A5",
+    "memo": "명동역과 을지로입구역 사이 · 늦게까지 영업한다는 후기",
+    "menus": [
+      "낭만김밥 4,300원",
+      "참치김밥 5,000원",
+      "떡라면 6,000원",
+      "떡만둣국 8,500원",
+      "제육덮밥 9,500원"
+    ]
+  },
+  {
+    "name": "청담동마녀김밥 시청점",
+    "category": "분식",
+    "address": "서울 중구 을지로 6 1층 104호",
+    "phone": "02-318-9890",
+    "url": "https://polle.com/place/1sheGx/%EC%B2%AD%EB%8B%B4%EB%8F%99%20%EB%A7%88%EB%85%80%EA%B9%80%EB%B0%A5",
+    "memo": "프랜차이즈 · 영업시간은 출처마다 다름",
+    "menus": [
+      "마녀김밥 4,800원",
+      "마녀라면 4,900원",
+      "참치김밥 5,500원",
+      "마녀떡볶이 6,700원",
+      "로제떡볶이 9,000원"
+    ]
+  },
+  {
+    "name": "명동충무김밥",
+    "category": "분식",
+    "address": "서울 중구 명동10길 16",
+    "phone": "02-755-8488",
+    "url": "https://www.diningcode.com/profile.php?rid=AF9dV8cqjICf",
+    "memo": "충무김밥 한 가지만 판매",
+    "menus": [
+      "충무김밥 12,000원"
+    ]
   }
 ]
