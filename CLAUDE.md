@@ -39,3 +39,5 @@ README의 "다른 사람들에게 링크로 공유하기"를 따른다.
 - 후보 출처 우선순위는 저장된 목록(상태의 `places`) > `restaurants.json` > 카카오 실시간 검색이다(`src/app.js`의 `placeSource`).
 - 관리자 API(`/api/admin/places`)는 `x-admin-key` 헤더로 인증한다.
 - 관리자 키 기본값은 `hs`이고 `ADMIN_KEY`로 바꾼다. 키를 화면 코드에 넣지 않는다.
+- 이름 `SB`는 관리자 전용이다. 투표·주문 요청에 `name`이 SB면 서버가 관리자 키를 확인한다(`src/app.js`의 `voterFrom`).
+- 화면 문구는 `public/i18n.js`(ko/en/ja/zh), 서버 안내 메시지는 `src/i18n.js`(한국어 문장이 키, `x-lang` 헤더로 선택)에 있다. 문구를 추가하면 네 언어를 모두 채운다.

@@ -550,8 +550,12 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
       decidedAt: round.finishedAt,
       winner: round.winner,
       totalVotes: t.totalVotes,
-      // 통계용: 후보별 득표
+      // 통계용: 후보별 득표, 투표자별 선택(선택 적중 랭킹)
       candidates: round.candidates.map((c) => ({ id: c.id, name: c.name, categoryLabel: c.categoryLabel, votes: t.counts[c.id] || 0 })),
+      voters: Object.values(round.votes)
+        .map(readVote)
+        .filter((v) => v.name)
+        .map((v) => ({ name: v.name, candidateId: v.candidateId })),
     });
     // 약 2년치 보관 (하루 1회 기준)
     if (s.history.length > 730) s.history = s.history.slice(-730);

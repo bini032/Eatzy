@@ -1,4 +1,4 @@
-/* shadcn/ui(zinc 테마)의 디자인 토큰과 컴포넌트 스타일을 그대로 옮긴 CSS */
+/* shadcn/ui(zinc 테마)의 디자인 토큰과 컴포넌트 스타일을 그대로 옮긴 CSS. 기본은 라이트, 버튼으로 다크 전환 */
 :root {
   --background: 0 0% 100%;
   --foreground: 240 10% 3.9%;
@@ -20,25 +20,23 @@
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 5.5%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --destructive: 0 72% 51%;
-    --ring: 240 4.9% 83.9%;
-    --success: 142 69% 58%;
-    --success-soft: 144 61% 9%;
-    --shadow-sm: none;
-  }
+:root[data-theme="dark"] {
+  --background: 240 10% 3.9%;
+  --foreground: 0 0% 98%;
+  --card: 240 10% 5.5%;
+  --muted: 240 3.7% 15.9%;
+  --muted-foreground: 240 5% 64.9%;
+  --border: 240 3.7% 15.9%;
+  --input: 240 3.7% 15.9%;
+  --primary: 0 0% 98%;
+  --primary-foreground: 240 5.9% 10%;
+  --secondary: 240 3.7% 15.9%;
+  --secondary-foreground: 0 0% 98%;
+  --destructive: 0 72% 51%;
+  --ring: 240 4.9% 83.9%;
+  --success: 142 69% 58%;
+  --success-soft: 144 61% 9%;
+  --shadow-sm: none;
 }
 
 * { box-sizing: border-box; border-color: hsl(var(--border)); }
@@ -67,8 +65,17 @@ code { font-size: 13px; background: hsl(var(--muted)); padding: 1px 5px; border-
 .label { display: block; font-size: 12px; font-weight: 500; color: hsl(var(--muted-foreground)); }
 .error { color: hsl(var(--destructive)); font-size: 14px; margin: 6px 0 0; }
 
-.top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 20px; }
+:root { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+.top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+.brand h1 { display: inline; }
 .brand-dot { color: hsl(var(--brand)); }
+.brand-by { margin-left: 6px; font-size: 12px; font-weight: 600; color: hsl(var(--muted-foreground)); letter-spacing: 0.02em; }
+.top-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }
+.top-actions .lang-select { width: auto; height: 36px; font-size: 13px; padding: 0 8px; }
+.icon-btn { width: 36px; padding: 0; }
+.footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid hsl(var(--border)); display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 12px; color: hsl(var(--muted-foreground)); }
 
 /* ---------- Button ---------- */
 button, select, input, textarea { font: inherit; color: inherit; }
@@ -158,8 +165,25 @@ input::placeholder, textarea::placeholder { color: hsl(var(--muted-foreground));
 .loc-results small { color: hsl(var(--muted-foreground)); font-weight: 400; }
 .source-info { margin: 12px 0 0; padding-top: 12px; border-top: 1px solid hsl(var(--border)); }
 
-.find-row { margin: 20px 0 8px; }
+.find-row { margin: 20px 0 8px; display: grid; grid-template-columns: 1fr; gap: 8px; }
 .find-row button { width: 100%; height: 48px; font-size: 16px; font-weight: 600; }
+.find-row #manualBtn { height: 40px; font-size: 14px; }
+
+/* ---------- 직접 고르기 ---------- */
+.manual { margin-top: 8px; display: flex; flex-direction: column; gap: 10px; }
+.manual-head { display: flex; justify-content: space-between; align-items: center; }
+.manual-head h3 { margin: 0; }
+.manual p.small-text { margin: 0; }
+.manual-results { list-style: none; margin: 0; padding: 4px; border: 1px solid hsl(var(--border)); border-radius: var(--radius); max-height: 280px; overflow-y: auto; }
+.manual-results li.small-text { padding: 8px 10px; }
+.manual-results button { width: 100%; height: auto; min-height: 40px; padding: 6px 10px; justify-content: space-between; text-align: left; border: 0; box-shadow: none; white-space: normal; font-weight: 400; }
+.manual-results button small { color: hsl(var(--muted-foreground)); }
+.manual-results button.on { background: hsl(var(--secondary)); }
+.manual-results .check-mark { flex: 0 0 auto; font-weight: 700; }
+.manual-custom { display: flex; flex-direction: column; gap: 6px; }
+.manual-custom-row { display: flex; gap: 6px; }
+.manual-custom-row input { flex: 1; min-width: 0; }
+.manual-custom-row select { width: auto; flex: 0 0 auto; }
 
 /* ---------- Alert ---------- */
 .message {
@@ -235,6 +259,19 @@ span.chip { height: 28px; background: hsl(var(--secondary)); }
 .menu-add input { height: 36px; min-width: 0; flex: 1; }
 .menu-add button { flex: 0 0 auto; }
 .menu-summary { font-weight: 600; }
+.card .voters { font-size: 12px; }
+
+/* ---------- 결정 후 메뉴 고르기 ---------- */
+.decision .order { margin: 18px 0 10px; padding: 16px; border-radius: var(--radius); background: hsl(var(--background)); border: 1px solid hsl(var(--border)); text-align: left; display: flex; flex-direction: column; gap: 8px; }
+.decision .order h3 { margin: 0; }
+.decision .order p { margin: 0; }
+.order .chips { margin-top: 0; }
+.order-list { margin-top: 6px; padding-top: 10px; border-top: 1px solid hsl(var(--border)); }
+.order-list ul { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.order-list li { display: flex; flex-wrap: wrap; gap: 4px 8px; font-size: 14px; align-items: baseline; }
+.order-list li.mine strong::after { content: " ✓"; }
+.order-list li span { color: hsl(var(--muted-foreground)); }
+.order-list li em { font-style: normal; font-size: 12px; font-weight: 600; margin-left: auto; }
 .my-total { font-size: 13px; font-weight: 600; }
 
 .tie { margin-top: 16px; padding: 16px; border-radius: calc(var(--radius) + 4px); border: 1px dashed hsl(var(--brand)); text-align: center; }

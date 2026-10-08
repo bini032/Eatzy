@@ -706,3 +706,38 @@ test('직접 고르기: 목록에서 고른 가게와 직접 입력한 가게로
     t.close();
   }
 });
+
+test('선택 적중 랭킹: 이름별로 내가 고른 가게가 결정된 비율을 월별로 보여 준다', async () => {
+  const places = [
+    { name: '적중1', category: '한식' },
+    { name: '적중2', category: '중식' },
+    { name: '적중3', category: '양식' },
+    { name: '적중4', category: '분식' },
+  ];
+  const t = await setup({ noKakao: true, places });
+  try {
+    const V4 = 'voter-dddd-4444';
+    for (let i = 0; i < 2; i++) {
+      const { round } = (await t.call('POST', '/api/rounds', { key: 'hs' })).body;
+      const [c1, c2, c3] = round.candidates;
+      await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V1, name: 'SB', key: 'hs', candidateId: c1.id });
+      await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V2, name: 'AA', candidateId: i === 0 ? c1.id : c2.id });
+      await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V3, name: 'BB', candidateId: c2.id });
+      await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V4, name: 'CC', candidateId: c3.id });
+      await t.call('POST', `/api/rounds/${round.id}/complete`, { key: 'hs' });
+    }
+    // 1회차: SB·AA가 고른 1번 결정, 2회차: AA·BB가 고른 2번 결정
+    const st = (await t.call('GET', '/api/stats')).body;
+    const byName = Object.fromEntries(st.people.map((p) => [p.name, p]));
+    assert.deepEqual(st.people.map((p) => [p.name, p.wins, p.rounds, p.rate]), [
+      ['AA', 2, 2, 100],
+      ['SB', 1, 2, 50],
+      ['BB', 1, 2, 50],
+      ['CC', 0, 2, 0],
+    ]);
+    assert.equal(byName.SB.rounds, 2);
+    assert.equal(st.people.at(-1).name, 'CC');
+  } finally {
+    t.close();
+  }
+});

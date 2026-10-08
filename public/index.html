@@ -1,43 +1,60 @@
 <!doctype html>
-<html lang="ko">
+<html lang="ko" data-theme="light">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Eatzy 점심 투표</title>
+  <title>Eatzy · SBComms</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍱</text></svg>" />
+  <script>
+    // 첫 화면부터 저장된 테마를 적용 (기본은 라이트)
+    try {
+      if (localStorage.getItem('eatzy-theme') === 'dark') document.documentElement.dataset.theme = 'dark';
+    } catch {}
+  </script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <main class="wrap">
     <header class="top">
-      <div>
+      <div class="brand">
         <h1>Eatzy<span class="brand-dot">.</span></h1>
-        <p class="sub">오늘 점심, 다같이 정해요</p>
+        <span class="brand-by" data-i18n="app.by">by SBComms</span>
+        <p class="sub" data-i18n="app.subtitle">오늘 점심, 다같이 정해요</p>
       </div>
-      <button id="shareBtn" class="ghost small" type="button">링크 복사</button>
+      <div class="top-actions">
+        <button id="userBtn" class="ghost small" type="button" hidden></button>
+        <select id="langSelect" class="lang-select" data-i18n-aria="lang.label" aria-label="언어">
+          <option value="ko">한국어</option>
+          <option value="en">English</option>
+          <option value="ja">日本語</option>
+          <option value="zh">中文</option>
+        </select>
+        <button id="themeBtn" class="ghost small icon-btn" type="button">🌙</button>
+        <button id="shareBtn" class="ghost small" type="button" data-i18n="share">링크 복사</button>
+      </div>
     </header>
 
     <section class="panel" id="locationPanel">
       <div class="loc-row">
         <div class="loc-info">
-          <span class="label">기준 위치</span>
-          <strong id="locName">불러오는 중…</strong>
+          <span class="label" data-i18n="loc.label">기준 위치</span>
+          <strong id="locName" data-i18n="loc.loading">불러오는 중…</strong>
           <span id="locAddr" class="muted"></span>
         </div>
         <label class="radius">
-          <span class="label">반경</span>
+          <span class="label" data-i18n="loc.radius">반경</span>
           <select id="radiusSelect"></select>
         </label>
       </div>
       <div class="loc-actions">
-        <button id="locCurrentBtn" class="ghost small" type="button">📍 내 현재 위치로 갱신</button>
-        <button id="locSearchToggle" class="ghost small" type="button">🔎 장소 검색해서 지정</button>
-        <button id="locDefaultBtn" class="ghost small" type="button">🏢 기본 위치</button>
+        <button id="locCurrentBtn" class="ghost small" type="button" data-i18n="loc.current">📍 내 현재 위치로 갱신</button>
+        <button id="locSearchToggle" class="ghost small" type="button" data-i18n="loc.searchToggle">🔎 장소 검색해서 지정</button>
+        <button id="locDefaultBtn" class="ghost small" type="button"></button>
       </div>
       <form id="locSearchForm" class="loc-search" hidden>
-        <input id="locSearchInput" type="search" placeholder="예: 을지로입구역, 회사 건물 이름" autocomplete="off" />
-        <button class="small" type="submit">검색</button>
+        <input id="locSearchInput" type="search" data-i18n-placeholder="loc.searchPh" autocomplete="off" />
+        <button class="small" type="submit" data-i18n="loc.searchBtn">검색</button>
       </form>
       <ul id="locResults" class="loc-results" hidden></ul>
       <p id="sourceInfo" class="muted small-text source-info"></p>
@@ -46,14 +63,41 @@
     <section id="decision" class="decision" hidden></section>
 
     <div class="find-row">
-      <button id="findBtn" class="primary" type="button">🍽️ 맛집 찾기 (새 투표 시작)</button>
+      <button id="findBtn" class="primary" type="button"></button>
+      <button id="manualBtn" class="ghost" type="button" data-i18n="manual.btn">✋ 후보 직접 고르기</button>
     </div>
+
+    <section id="manualPanel" class="panel manual" hidden>
+      <div class="manual-head">
+        <h3 data-i18n="manual.title">후보 직접 고르기</h3>
+        <button id="manualClose" class="ghost small" type="button" data-i18n="manual.close">닫기</button>
+      </div>
+      <p class="muted small-text" data-i18n="manual.desc"></p>
+      <input id="manualSearch" type="search" data-i18n-placeholder="manual.searchPh" autocomplete="off" />
+      <ul id="manualResults" class="manual-results"></ul>
+      <p id="manualSelectedTitle" class="label"></p>
+      <div id="manualSelected" class="chips"></div>
+      <form id="manualCustomForm" class="manual-custom">
+        <span class="label" data-i18n="manual.customTitle">목록에 없는 가게 직접 입력</span>
+        <div class="manual-custom-row">
+          <input name="name" type="text" maxlength="80" data-i18n-placeholder="manual.customNamePh" />
+          <select name="category" data-i18n-aria="admin.categoryAria">
+            <option value="한식" data-i18n="cat.한식">한식</option>
+            <option value="중식" data-i18n="cat.중식">중식</option>
+            <option value="양식" data-i18n="cat.양식">양식</option>
+            <option value="분식" data-i18n="cat.분식">분식</option>
+          </select>
+          <button class="small" type="submit" data-i18n="manual.customAdd">추가</button>
+        </div>
+      </form>
+      <button id="manualStart" class="primary" type="button" data-i18n="manual.start">이 가게들로 투표 시작</button>
+    </section>
 
     <div id="message" class="message" role="status" hidden></div>
 
     <section id="roundSection" hidden>
       <div class="round-head">
-        <h2>투표하기</h2>
+        <h2 id="roundTitle"></h2>
         <span id="voteSummary" class="muted"></span>
       </div>
       <p id="roundMeta" class="muted small-text"></p>
@@ -62,125 +106,135 @@
 
       <div id="tieBox" class="tie" hidden>
         <p id="tieText"></p>
-        <button id="drawBtn" class="primary" type="button">🎲 랜덤 뽑기</button>
+        <button id="drawBtn" class="primary" type="button" data-i18n="tie.draw">🎲 랜덤 뽑기</button>
       </div>
 
       <div class="complete-row">
-        <button id="completeBtn" class="dark" type="button">✅ 완료 (관리자)</button>
+        <button id="completeBtn" class="dark" type="button" data-i18n="complete" hidden>✅ 완료 (관리자)</button>
       </div>
     </section>
 
     <section id="historySection" hidden>
-      <h2>최근 결정</h2>
+      <h2 data-i18n="history.title">최근 결정</h2>
       <ul id="history" class="history"></ul>
     </section>
 
     <section id="statsSection" class="stats">
       <div class="stats-head">
-        <h2>📊 통계</h2>
-        <select id="statsMonth" aria-label="통계 기간"></select>
+        <h2 data-i18n="stats.title">📊 통계</h2>
+        <select id="statsMonth" data-i18n-aria="stats.period" aria-label="통계 기간"></select>
       </div>
       <div id="statsTiles" class="tiles"></div>
       <div class="stats-grid">
         <div class="panel">
-          <h3>가게 랭킹</h3>
-          <p class="muted small-text">점심으로 결정된 횟수</p>
+          <h3 data-i18n="stats.hitTitle">🎯 선택 적중 랭킹</h3>
+          <p class="muted small-text" data-i18n="stats.hitDesc"></p>
+          <ol id="statsPeople" class="rank"></ol>
+        </div>
+        <div class="panel">
+          <h3 data-i18n="stats.restaurants">가게 랭킹</h3>
+          <p class="muted small-text" data-i18n="stats.restaurantsDesc"></p>
           <ol id="statsRestaurants" class="rank"></ol>
         </div>
         <div class="panel">
-          <h3>인기 메뉴</h3>
-          <p class="muted small-text">결정된 가게에서 고른 메뉴 (주문 수)</p>
+          <h3 data-i18n="stats.menus">인기 메뉴</h3>
+          <p class="muted small-text" data-i18n="stats.menusDesc"></p>
           <ol id="statsMenus" class="rank"></ol>
         </div>
         <div class="panel">
-          <h3>카테고리별 결정</h3>
-          <p class="muted small-text">한식·중식·양식·분식 결정 횟수</p>
+          <h3 data-i18n="stats.categories">카테고리별 결정</h3>
+          <p class="muted small-text" data-i18n="stats.categoriesDesc"></p>
           <ol id="statsCategories" class="rank"></ol>
         </div>
         <div class="panel">
-          <h3>표를 많이 받은 후보</h3>
-          <p class="muted small-text">후보로 나와 받은 표 수 (결정 안 된 가게 포함)</p>
+          <h3 data-i18n="stats.votes">표를 많이 받은 후보</h3>
+          <p class="muted small-text" data-i18n="stats.votesDesc"></p>
           <ol id="statsVotes" class="rank"></ol>
         </div>
       </div>
     </section>
 
-    <section class="panel admin" id="adminSection">
+    <section class="panel admin" id="adminSection" hidden>
       <details id="adminDetails">
-        <summary>🔧 가게 관리 (관리자)</summary>
-        <form id="adminLogin" class="admin-login">
-          <input id="adminKeyInput" type="password" placeholder="관리자 키" autocomplete="off" aria-label="관리자 키" />
-          <button class="primary small" type="submit">열기</button>
-        </form>
+        <summary data-i18n="admin.title">🔧 가게 관리 (관리자)</summary>
         <p id="adminError" class="error" hidden></p>
-        <div id="adminBody" hidden>
-          <p class="muted small-text">
-            저장된 가게 <strong id="adminCount">0</strong>곳 · PC의 Claude Code에서 <code>npm run upload-places</code>로 올리거나 여기서 직접 추가할 수 있어요.
-            저장된 목록이 있으면 "맛집 찾기"는 이 목록에서 뽑습니다.
-          </p>
+        <div id="adminBody">
+          <p id="adminDesc" class="muted small-text"></p>
           <div id="adminList"></div>
 
-          <h3 class="admin-subhead">가게 추가</h3>
+          <h3 class="admin-subhead" data-i18n="admin.addTitle">가게 추가</h3>
           <form id="adminAddForm" class="admin-form">
-            <input name="name" type="text" placeholder="가게 이름 *" required maxlength="80" />
-            <select name="category" aria-label="카테고리">
-              <option>한식</option><option>중식</option><option>양식</option><option>분식</option>
+            <input name="name" type="text" data-i18n-placeholder="admin.namePh" required maxlength="80" />
+            <select name="category" data-i18n-aria="admin.categoryAria">
+              <option value="한식" data-i18n="cat.한식">한식</option>
+              <option value="중식" data-i18n="cat.중식">중식</option>
+              <option value="양식" data-i18n="cat.양식">양식</option>
+              <option value="분식" data-i18n="cat.분식">분식</option>
             </select>
-            <input class="full" name="address" type="text" placeholder="주소 (선택)" maxlength="200" />
-            <input class="full" name="url" type="text" placeholder="가게 정보 링크 (선택)" maxlength="300" />
-            <input class="full" name="naverUrl" type="text" placeholder="네이버 지도 링크 (선택, 비우면 이름+주소로 검색)" maxlength="300" />
-            <input class="full" name="menus" type="text" placeholder="메뉴 (선택, 쉼표로 구분: 김치찌개, 제육볶음)" />
-            <button class="primary small full" type="submit">추가</button>
+            <input class="full" name="address" type="text" data-i18n-placeholder="admin.addressPh" maxlength="200" />
+            <input class="full" name="url" type="text" data-i18n-placeholder="admin.urlPh" maxlength="300" />
+            <input class="full" name="naverUrl" type="text" data-i18n-placeholder="admin.naverPh" maxlength="300" />
+            <input class="full" name="menus" type="text" data-i18n-placeholder="admin.menusPh" />
+            <button class="primary small full" type="submit" data-i18n="admin.add">추가</button>
           </form>
 
           <details class="admin-import">
-            <summary>JSON 붙여넣기로 한꺼번에 추가</summary>
-            <p class="muted small-text">restaurants.json과 같은 형식의 배열을 붙여넣으세요.</p>
-            <textarea id="adminImport" rows="6" placeholder='[{"name": "가게 이름", "category": "한식", "menus": ["메뉴"]}]'></textarea>
-            <label class="check"><input type="checkbox" id="adminReplace" /> 기존 목록을 모두 지우고 교체</label>
-            <button id="adminImportBtn" class="small" type="button">불러오기</button>
+            <summary data-i18n="admin.importTitle">JSON 붙여넣기로 한꺼번에 추가</summary>
+            <p class="muted small-text" data-i18n="admin.importDesc"></p>
+            <textarea id="adminImport" rows="6" placeholder='[{"name": "…", "category": "한식", "menus": ["… 9,000원"]}]'></textarea>
+            <label class="check"><input type="checkbox" id="adminReplace" /> <span data-i18n="admin.replace"></span></label>
+            <button id="adminImportBtn" class="small" type="button" data-i18n="admin.importBtn">불러오기</button>
           </details>
         </div>
       </details>
     </section>
+
+    <footer class="footer">
+      <span data-i18n="footer">Eatzy는 SBComms의 솔루션입니다.</span>
+      <span>© SBComms</span>
+    </footer>
   </main>
 
-  <dialog id="noticeDialog">
-    <h3 id="noticeTitle">투표가 완료되었습니다!</h3>
-    <p id="noticeText" class="muted">담당자에게 직접 문의해주세요.</p>
-    <div class="dialog-actions">
-      <button id="noticeOk" class="primary" type="button">확인</button>
-    </div>
-  </dialog>
-
-  <dialog id="keyDialog">
-    <form method="dialog" id="keyForm">
-      <h3 id="keyTitle">관리자 확인</h3>
-      <p id="keyDesc" class="muted">관리자 키를 입력하세요.</p>
-      <input id="keyInput" type="password" autocomplete="off" required />
-      <p id="keyError" class="error" hidden></p>
+  <dialog id="userDialog">
+    <form id="userForm">
+      <h3 data-i18n="user.title">이름 등록</h3>
+      <p class="muted small-text" data-i18n="user.desc"></p>
+      <input id="userName" type="text" maxlength="20" autocomplete="nickname" data-i18n-placeholder="user.namePh" />
+      <div id="userAdmin" hidden>
+        <p class="muted small-text" data-i18n="user.adminDesc"></p>
+        <input id="userKey" type="password" autocomplete="off" data-i18n-placeholder="user.adminPh" />
+      </div>
+      <p id="userError" class="error" hidden></p>
       <div class="dialog-actions">
-        <button value="cancel" formnovalidate class="ghost" type="submit">취소</button>
-        <button id="keyOk" value="ok" class="primary" type="submit">확인</button>
+        <button id="userCancel" class="ghost" type="button" data-i18n="cancel" hidden>취소</button>
+        <button id="userOk" class="primary" type="submit" data-i18n="user.save">시작하기</button>
       </div>
     </form>
   </dialog>
 
   <dialog id="menuDialog">
     <form id="menuForm">
-      <h3 id="menuTitle">메뉴 입력</h3>
-      <p class="muted small-text">한 줄에 메뉴 하나씩 입력하세요. 줄을 지우면 그 메뉴가 삭제됩니다. 다음에 이 가게가 다시 나와도 이 메뉴를 씁니다.</p>
-      <textarea id="menuInput" rows="7" placeholder="메뉴 이름을 한 줄에 하나씩"></textarea>
-      <label class="label" for="menuKey">관리자 키</label>
-      <input id="menuKey" type="password" autocomplete="off" required />
+      <h3 id="menuTitle" data-i18n="menuDialog.title">메뉴 입력</h3>
+      <p class="muted small-text" data-i18n="menuDialog.desc"></p>
+      <textarea id="menuInput" rows="7" data-i18n-placeholder="menuDialog.ph"></textarea>
       <p id="menuError" class="error" hidden></p>
       <div class="dialog-actions">
-        <button id="menuCancel" class="ghost" type="button">취소</button>
-        <button id="menuOk" class="primary" type="submit">저장</button>
+        <button id="menuCancel" class="ghost" type="button" data-i18n="cancel">취소</button>
+        <button id="menuOk" class="primary" type="submit" data-i18n="save">저장</button>
       </div>
     </form>
   </dialog>
 
+  <dialog id="noticeDialog">
+    <h3 data-i18n="notice.title">투표가 완료되었습니다!</h3>
+    <p class="muted" data-i18n="notice.text">담당자에게 직접 문의해주세요.</p>
+    <p class="muted small-text" data-i18n="notice.hint"></p>
+    <div class="dialog-actions">
+      <button id="noticeOk" class="primary" type="button" data-i18n="ok">확인</button>
+    </div>
+  </dialog>
+
+  <script src="i18n.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

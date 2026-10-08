@@ -21,6 +21,7 @@ function buildStats(history, month, categories) {
   const restaurants = new Map();
   const cats = new Map(categories.map((c) => [c.label, { label: c.label, count: 0 }]));
   const menus = new Map();
+  const people = new Map(); // 이름별 투표 횟수와 내가 고른 가게가 결정된 횟수
   let totalVotes = 0;
 
   for (const h of entries) {
@@ -39,6 +40,14 @@ function buildStats(history, month, categories) {
       cr.votes += c.votes || 0;
       cr.nominated++;
       restaurants.set(c.id, cr);
+    }
+
+    for (const v of h.voters || []) {
+      const key = v.name.toLowerCase();
+      const p = people.get(key) || { name: v.name, rounds: 0, wins: 0 };
+      p.rounds++;
+      if (v.candidateId === w.id) p.wins++;
+      people.set(key, p);
     }
 
     for (const [menu, n] of Object.entries(w.menuCounts || {})) {
@@ -64,6 +73,11 @@ function buildStats(history, month, categories) {
     popularCandidates: topN(new Map([...restaurants].map(([k, r]) => [k, { ...r, count: r.votes }])), 10).filter((r) => r.count > 0),
     categories: [...cats.values()],
     menus: topN(menus, 10),
+    // 선택 적중률 순 (같으면 적중 횟수, 참여 횟수 순)
+    people: [...people.values()]
+      .map((p) => ({ ...p, rate: Math.round((p.wins / p.rounds) * 100) }))
+      .sort((a, b) => b.rate - a.rate || b.wins - a.wins || b.rounds - a.rounds)
+      .slice(0, 10),
   };
 }
 
