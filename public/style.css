@@ -154,6 +154,18 @@ select, input[type="search"], input[type="password"], textarea {
   align-items: center;
 }
 span.chip { min-height: 28px; }
+.menu-add { display: flex; gap: 6px; margin-top: 2px; }
+.menu-add input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 6px 10px;
+  min-height: 36px;
+  font-size: 14px;
+}
+.menu-add button { flex: 0 0 auto; }
 .chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
 button.link {
   align-self: flex-start;

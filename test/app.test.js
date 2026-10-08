@@ -282,16 +282,14 @@ const MENU_LIST = [
   { name: '메뉴분식', category: '분식' },
 ];
 
-test('메뉴: 목록의 메뉴로 추천하고, 가게와 메뉴를 함께 투표한다', async () => {
+test('메뉴: 목록의 메뉴를 모두 보여 주고, 가게와 메뉴를 함께 투표한다', async () => {
   const t = await setup({ noKakao: true, places: MENU_LIST });
   try {
     const { round } = (await t.call('POST', '/api/rounds', {})).body;
     const korean = round.candidates.find((c) => c.categoryKey === 'korean');
     assert.deepEqual(korean.menus, ['테스트찌개', '테스트볶음']);
-    assert.ok(korean.menus.includes(korean.recommendedMenu));
     const chinese = round.candidates.find((c) => c.categoryKey === 'chinese');
     assert.deepEqual(chinese.menus, []);
-    assert.equal(chinese.recommendedMenu, null);
 
     let r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V1, candidateId: korean.id, menu: '테스트찌개' });
     assert.deepEqual(r.body.round.myVote, { candidateId: korean.id, menu: '테스트찌개' });
@@ -323,7 +321,6 @@ test('메뉴: 관리자가 직접 입력한 메뉴는 키가 필요하고, 다�
     assert.equal(r.status, 200);
     const updated = r.body.round.candidates.find((c) => c.id === chinese.id);
     assert.deepEqual(updated.menus, ['짜장', '짬뽕']);
-    assert.ok(['짜장', '짬뽕'].includes(updated.recommendedMenu));
 
     await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V1, candidateId: chinese.id, menu: '짬뽕' });
     r = await t.call('POST', url, { key: 'hs', menus: ['짜장'] });
@@ -371,4 +368,30 @@ test('Upstash Redis 저장소: 불러오기에 실패하면 시작하지 않도�
   global.fetch = async () => new Response(JSON.stringify({ error: 'WRONGPASS' }), { status: 401 });
   const s = new Store('/nonexistent/state.json', { redis: { url: 'https://redis.test', token: 'bad', key: 'k' } });
   await assert.rejects(s.init(), /WRONGPASS/);
+});
+
+test('메뉴: 누구나 메뉴를 추가하면 그 메뉴로 투표되고, 다음 투표에도 남는다', async () => {
+  const t = await setup({ noKakao: true, places: MENU_LIST });
+  try {
+    const { round } = (await t.call('POST', '/api/rounds', {})).body;
+    const snack = round.candidates.find((c) => c.categoryKey === 'snack');
+    const url = `/api/rounds/${round.id}/candidates/${snack.id}/menu-items`;
+
+    let r = await t.call('POST', url, { voterId: V1, menu: '  테스트떡볶이 ' });
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.body.round.candidates.find((c) => c.id === snack.id).menus, ['테스트떡볶이']);
+    assert.deepEqual(r.body.round.myVote, { candidateId: snack.id, menu: '테스트떡볶이' });
+
+    r = await t.call('POST', url, { voterId: V2, menu: '테스트떡볶이' });
+    assert.deepEqual(r.body.round.candidates.find((c) => c.id === snack.id).menus, ['테스트떡볶이'], '중복 추가 안 됨');
+    assert.deepEqual(r.body.round.menuCounts[snack.id], { 테스트떡볶이: 2 });
+
+    r = await t.call('POST', url, { voterId: V2, menu: '   ' });
+    assert.equal(r.status, 400);
+
+    const next = (await t.call('POST', '/api/rounds', { key: 'hs' })).body.round;
+    assert.deepEqual(next.candidates.find((c) => c.id === snack.id).menus, ['테스트떡볶이']);
+  } finally {
+    t.close();
+  }
 });

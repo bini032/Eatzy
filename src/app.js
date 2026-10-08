@@ -14,13 +14,6 @@ function keyMatches(input, expected) {
   return crypto.timingSafeEqual(a, b);
 }
 
-function setMenus(candidate, menus) {
-  candidate.menus = menus;
-  if (!menus.includes(candidate.recommendedMenu)) {
-    candidate.recommendedMenu = menus.length ? randomItem(menus) : null;
-  }
-}
-
 function validCoords(x, y) {
   return Number.isFinite(x) && Number.isFinite(y) && Math.abs(x) <= 180 && Math.abs(y) <= 90;
 }
@@ -170,9 +163,9 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
           : `반경 ${radius}m 안에서 맛집을 찾지 못했습니다. 반경을 넓히거나 위치를 바꿔 보세요.`
       );
     }
-    // 메뉴: 관리자가 앱에서 입력한 메뉴 > 가게 목록 파일의 메뉴. 메뉴가 있으면 하나를 추천으로 뽑는다.
+    // 메뉴: 앱에서 입력/추가한 메뉴 > 가게 목록 파일의 메뉴
     for (const c of candidates) {
-      setMenus(c, s.menus[c.id] || c.menus || []);
+      c.menus = s.menus[c.id] || c.menus || [];
     }
     s.round = {
       id: crypto.randomUUID(),
@@ -222,7 +215,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     const s = state();
     if (menus.length) s.menus[candidate.id] = menus;
     else delete s.menus[candidate.id];
-    setMenus(candidate, menus);
+    candidate.menus = menus;
     // 목록에서 빠진 메뉴를 고른 표는 가게 투표만 남기고 메뉴는 미정으로 돌린다.
     for (const [voter, raw] of Object.entries(round.votes)) {
       const v = readVote(raw);
@@ -230,6 +223,29 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     }
     store.save();
     res.json({ round: publicRound(round, req.body?.voterId) });
+  });
+
+  // 누구나 메뉴 하나를 추가하고 바로 그 메뉴로 투표. (수정/삭제는 관리자만 위 API로)
+  app.post('/api/rounds/:id/candidates/:cid/menu-items', (req, res) => {
+    const round = currentRound(req.params.id);
+    if (round.status !== 'voting') throw new AppError(409, '이미 결정이 완료된 투표입니다.');
+    const candidate = round.candidates.find((c) => c.id === req.params.cid);
+    if (!candidate) throw new AppError(404, '후보에 없는 가게입니다.');
+    const voterId = String(req.body?.voterId || '');
+    if (!/^[\w-]{8,64}$/.test(voterId)) throw new AppError(400, '투표자 정보가 올바르지 않습니다.');
+    const [menu] = cleanMenus([req.body?.menu ?? '']);
+    if (!menu) throw new AppError(400, '메뉴 이름을 입력해 주세요.');
+
+    const current = candidate.menus || [];
+    if (!current.includes(menu)) {
+      const menus = cleanMenus([...current, menu]);
+      if (!menus.includes(menu)) throw new AppError(400, '이 가게에는 메뉴를 더 추가할 수 없습니다.');
+      candidate.menus = menus;
+      state().menus[candidate.id] = menus;
+    }
+    round.votes[voterId] = { candidateId: candidate.id, menu };
+    store.save();
+    res.json({ round: publicRound(round, voterId) });
   });
 
   // 동점일 때 랜덤 뽑기. 같은 동점 상황에서 여러 번 눌러도 결과는 한 번만 정해진다.

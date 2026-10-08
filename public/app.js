@@ -171,20 +171,24 @@
       const chips = menus
         .map((m, i) => {
           const n = counts[m] || 0;
-          const label = `${m === c.recommendedMenu ? '⭐ ' : ''}${esc(m)}${n ? ` · ${n}` : ''}`;
+          const label = `${esc(m)}${n ? ` · ${n}` : ''}`;
           return done
             ? `<span class="chip">${label}</span>`
             : `<button class="chip${myMenu === m ? ' on' : ''}" data-menu="${i}" data-cid="${esc(c.id)}" type="button">${label}</button>`;
         })
         .join('');
-      html += `<div class="menus"><span class="label">${done ? '메뉴 선택 현황' : '메뉴 고르기 (누르면 이 가게에 투표)'}</span><div class="chips">${chips}</div></div>`;
-      if (c.recommendedMenu && !done) html += `<div class="meta">⭐ 오늘의 추천 메뉴: ${esc(c.recommendedMenu)}</div>`;
+      html += `<div class="menus"><span class="label">${done ? '메뉴 선택 현황' : `메뉴 ${menus.length}개 · 누르면 이 가게에 그 메뉴로 투표`}</span><div class="chips">${chips}</div></div>`;
       if (done && counts['']) html += `<div class="meta">메뉴 미정 ${counts['']}명</div>`;
     } else if (!done) {
-      html += '<div class="meta">등록된 메뉴가 없어요.</div>';
+      html += '<div class="meta">등록된 메뉴가 없어요. 먹을 메뉴를 아래에 직접 추가해 주세요.</div>';
     }
     if (!done) {
-      html += `<button class="link" data-menu-edit="${esc(c.id)}" type="button">${menus.length ? '메뉴 수정' : '메뉴 직접 입력'} (관리자)</button>`;
+      html += `
+        <form class="menu-add" data-add-cid="${esc(c.id)}">
+          <input type="text" maxlength="40" placeholder="${menus.length ? '원하는 메뉴가 없으면 직접 추가' : '메뉴 직접 추가 (예: 김치찌개)'}" aria-label="${esc(c.name)} 메뉴 추가" />
+          <button class="small" type="submit">추가</button>
+        </form>
+        <button class="link" data-menu-edit="${esc(c.id)}" type="button">메뉴 편집 (관리자)</button>`;
     }
     return html;
   }
@@ -207,6 +211,15 @@
       (round.origin ? `기준: ${round.origin.name} · 반경 ${formatDistance(round.radius)} · ` : '') +
       `${formatTime(round.createdAt)} 시작` +
       (round.missing && round.missing.length ? ` · 주변에 없는 카테고리: ${round.missing.join(', ')}` : '');
+
+    // 3초마다 다시 그려도 입력 중인 메뉴 추가 칸의 내용과 포커스가 사라지지 않게 보존
+    const drafts = {};
+    let focused = null;
+    for (const form of $('candidates').querySelectorAll('[data-add-cid]')) {
+      const input = form.querySelector('input');
+      if (input.value) drafts[form.dataset.addCid] = input.value;
+      if (document.activeElement === input) focused = { cid: form.dataset.addCid, pos: input.selectionStart };
+    }
 
     const max = Math.max(1, ...Object.values(round.counts));
     $('candidates').innerHTML = round.candidates
@@ -237,6 +250,16 @@
         </article>`;
       })
       .join('');
+
+    for (const form of $('candidates').querySelectorAll('[data-add-cid]')) {
+      const input = form.querySelector('input');
+      const cid = form.dataset.addCid;
+      if (drafts[cid]) input.value = drafts[cid];
+      if (focused && focused.cid === cid) {
+        input.focus();
+        input.setSelectionRange(focused.pos, focused.pos);
+      }
+    }
 
     const tieBox = $('tieBox');
     if (!done && round.tiedIds.length > 1) {
@@ -440,6 +463,28 @@
     });
   });
 
+  // 메뉴 직접 추가: 누구나 추가할 수 있고, 추가하면 그 메뉴로 바로 투표된다.
+  $('candidates').addEventListener('submit', (e) => {
+    const form = e.target.closest('[data-add-cid]');
+    if (!form) return;
+    e.preventDefault();
+    const input = form.querySelector('input');
+    const menu = input.value.trim();
+    if (!menu) return;
+    const round = data.round;
+    const cid = form.dataset.addCid;
+    withBusy(async () => {
+      const res = await api(`/api/rounds/${round.id}/candidates/${encodeURIComponent(cid)}/menu-items`, {
+        method: 'POST',
+        body: { voterId, menu },
+      });
+      input.value = '';
+      input.blur();
+      applyRound(res.round);
+      showMessage(`"${menu}" 메뉴를 추가하고 투표했어요.`);
+    });
+  });
+
   // 관리자 메뉴 입력
   $('candidates').addEventListener('click', (e) => {
     const btn = e.target.closest('[data-menu-edit]');
@@ -448,7 +493,7 @@
     const c = round.candidates.find((x) => x.id === btn.dataset.menuEdit);
     if (!c) return;
     const dialog = $('menuDialog');
-    $('menuTitle').textContent = `${c.name} 메뉴`;
+    $('menuTitle').textContent = `${c.name} 메뉴 편집`;
     $('menuInput').value = (c.menus || []).join('\n');
     $('menuKey').value = '';
     $('menuError').hidden = true;
