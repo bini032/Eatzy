@@ -336,3 +336,39 @@ test('메뉴: 관리자가 직접 입력한 메뉴는 키가 필요하고, 다�
     t.close();
   }
 });
+
+test('Upstash Redis 저장소: 시작 시 불러오고, 바뀔 때마다 최신 상태를 저장한다', async () => {
+  const kv = new Map();
+  const seen = [];
+  global.fetch = async (url, opts) => {
+    assert.equal(url, 'https://redis.test');
+    assert.equal(opts.headers.Authorization, 'Bearer tok');
+    const [cmd, key, value] = JSON.parse(opts.body);
+    seen.push(cmd);
+    if (cmd === 'GET') return new Response(JSON.stringify({ result: kv.get(key) ?? null }));
+    kv.set(key, value);
+    return new Response(JSON.stringify({ result: 'OK' }));
+  };
+  const redis = { url: 'https://redis.test', token: 'tok', key: 'eatzy:test' };
+
+  const a = new Store('/nonexistent/state.json', { redis });
+  await a.init();
+  assert.equal(a.state.round, null);
+  a.state.history.push({ n: 1 });
+  a.save();
+  a.state.history.push({ n: 2 });
+  a.save();
+  await a.flush();
+  assert.equal(JSON.parse(kv.get('eatzy:test')).history.length, 2, '마지막 상태가 저장됨');
+
+  const b = new Store('/nonexistent/state.json', { redis });
+  await b.init();
+  assert.equal(b.state.history.length, 2);
+  assert.deepEqual(b.state.menus, {});
+});
+
+test('Upstash Redis 저장소: 불러오기에 실패하면 시작하지 않도록 오류를 던진다', async () => {
+  global.fetch = async () => new Response(JSON.stringify({ error: 'WRONGPASS' }), { status: 401 });
+  const s = new Store('/nonexistent/state.json', { redis: { url: 'https://redis.test', token: 'bad', key: 'k' } });
+  await assert.rejects(s.init(), /WRONGPASS/);
+});
