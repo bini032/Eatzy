@@ -235,6 +235,7 @@ span.chip { height: 28px; background: hsl(var(--secondary)); }
 .menu-add input { height: 36px; min-width: 0; flex: 1; }
 .menu-add button { flex: 0 0 auto; }
 .menu-summary { font-weight: 600; }
+.my-total { font-size: 13px; font-weight: 600; }
 
 .tie { margin-top: 16px; padding: 16px; border-radius: calc(var(--radius) + 4px); border: 1px dashed hsl(var(--brand)); text-align: center; }
 .tie p { margin: 0 0 12px; }

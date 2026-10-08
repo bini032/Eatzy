@@ -298,7 +298,7 @@ test('메뉴: 목록의 메뉴를 모두 보여 주고, 가게와 메뉴를 함�
     assert.deepEqual(chinese.menus, []);
 
     let r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V1, candidateId: korean.id, menu: '테스트찌개' });
-    assert.deepEqual(r.body.round.myVote, { candidateId: korean.id, menu: '테스트찌개' });
+    assert.deepEqual(r.body.round.myVote, { candidateId: korean.id, menus: ['테스트찌개'] });
     await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V2, candidateId: korean.id, menu: '테스트찌개' });
     r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V3, candidateId: korean.id });
     assert.deepEqual(r.body.round.menuCounts[korean.id], { 테스트찌개: 2, '': 1 });
@@ -386,7 +386,7 @@ test('메뉴: 누구나 메뉴를 추가하면 그 메뉴로 투표되고, 다�
     let r = await t.call('POST', url, { voterId: V1, menu: '  테스트떡볶이 ' });
     assert.equal(r.status, 200);
     assert.deepEqual(r.body.round.candidates.find((c) => c.id === snack.id).menus, ['테스트떡볶이']);
-    assert.deepEqual(r.body.round.myVote, { candidateId: snack.id, menu: '테스트떡볶이' });
+    assert.deepEqual(r.body.round.myVote, { candidateId: snack.id, menus: ['테스트떡볶이'] });
 
     r = await t.call('POST', url, { voterId: V2, menu: '테스트떡볶이' });
     assert.deepEqual(r.body.round.candidates.find((c) => c.id === snack.id).menus, ['테스트떡볶이'], '중복 추가 안 됨');
@@ -566,6 +566,47 @@ test('월간 통계: 결정 횟수, 가게/카테고리/메뉴 랭킹을 한국 
 
     const all = await t.call('GET', '/api/stats?month=all');
     assert.equal(all.body.summary.decisions, 3);
+  } finally {
+    t.close();
+  }
+});
+
+test('메뉴 여러 개 선택: 메뉴별로 세고, 결정 시 가격 확인된 메뉴로 예상 총액을 계산한다', async () => {
+  const { menuPrice, estimateTotal } = require('../src/price');
+  assert.equal(menuPrice('짜장면 7,000원'), 7000);
+  assert.equal(menuPrice('즉석떡볶이 4,000~8,000원'), null);
+  assert.equal(menuPrice('테스트찌개'), null);
+  assert.deepEqual(estimateTotal({ '짜장면 7,000원': 2, '짬뽕 8,500원': 1, 기타: 1, '': 1 }), { total: 22500, unknown: 1 });
+
+  const places = [
+    { name: '가격중식', category: '중식', menus: ['짜장면 7,000원', '짬뽕 8,500원', '군만두'] },
+    { name: '가격한식', category: '한식' },
+  ];
+  const t = await setup({ noKakao: true, places });
+  try {
+    const { round } = (await t.call('POST', '/api/rounds', {})).body;
+    const c = round.candidates.find((x) => x.categoryKey === 'chinese');
+    let r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V1, candidateId: c.id, menus: ['짜장면 7,000원', '군만두'] });
+    assert.deepEqual(r.body.round.myVote, { candidateId: c.id, menus: ['짜장면 7,000원', '군만두'] });
+    await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V2, candidateId: c.id, menus: ['짜장면 7,000원', '짬뽕 8,500원'] });
+    r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V3, candidateId: c.id, menus: [] });
+    assert.equal(r.body.round.counts[c.id], 3, '메뉴를 여러 개 골라도 가게 표는 1인 1표');
+    assert.deepEqual(r.body.round.menuCounts[c.id], { '짜장면 7,000원': 2, 군만두: 1, '짬뽕 8,500원': 1, '': 1 });
+
+    r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V3, candidateId: c.id, menus: ['없는메뉴'] });
+    assert.equal(r.status, 400);
+
+    // 직접 추가한 메뉴는 기존 선택에 더해진다
+    r = await t.call('POST', `/api/rounds/${round.id}/candidates/${c.id}/menu-items`, { voterId: V1, menu: '탕수육 15,000원' });
+    assert.deepEqual(r.body.round.myVote.menus, ['짜장면 7,000원', '군만두', '탕수육 15,000원']);
+
+    // 관리자가 메뉴를 지우면 고른 메뉴에서도 빠진다
+    r = await t.call('POST', `/api/rounds/${round.id}/candidates/${c.id}/menus`, { key: 'hs', voterId: V1, menus: ['짜장면 7,000원', '짬뽕 8,500원', '탕수육 15,000원'] });
+    assert.deepEqual(r.body.round.myVote.menus, ['짜장면 7,000원', '탕수육 15,000원']);
+
+    r = await t.call('POST', `/api/rounds/${round.id}/complete`, { key: 'hs' });
+    assert.equal(r.body.round.winner.estimatedTotal, 7000 * 2 + 8500 + 15000);
+    assert.equal(r.body.round.winner.unknownPriceCount, 0);
   } finally {
     t.close();
   }

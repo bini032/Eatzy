@@ -168,6 +168,7 @@
       ${w.phone ? `<p>☎ ${esc(w.phone)}</p>` : ''}
       <p>득표 ${w.votes}표 / 총 ${round.totalVotes}표${w.byDraw ? ' · 동점 랜덤 뽑기로 결정' : ''}</p>
       ${menuSummary(w.menuCounts)}
+      ${w.estimatedTotal ? `<p class="menu-summary">💰 예상 총액 ${won(w.estimatedTotal)}${w.unknownPriceCount ? ` (가격 모르는 메뉴 ${w.unknownPriceCount}개 제외)` : ''}</p>` : ''}
       <p class="decision-actions">
         <a class="btn primary" href="${esc(naverMapUrl(w))}" target="_blank" rel="noopener">🧭 찾아가기 (네이버 지도)</a>
         ${infoLink(w, 'btn')}
@@ -176,19 +177,44 @@
     el.hidden = false;
   }
 
-  // 메뉴별 선택 인원: "김치찌개 3명 · 제육볶음 2명 · 메뉴 미정 1명"
+  // 메뉴 이름에서 가격 추출: "짜장면 7,000원" -> 7000. 범위나 가격이 없으면 null (서버 src/price.js와 같은 규칙)
+  function menuPrice(label) {
+    const s = String(label || '');
+    if (/\d\s*~\s*\d/.test(s)) return null;
+    const m = s.match(/(\d{1,3}(?:,\d{3})+|\d+)\s*원/);
+    return m ? Number(m[1].replace(/,/g, '')) : null;
+  }
+
+  function won(n) {
+    return `${Number(n).toLocaleString('ko-KR')}원`;
+  }
+
+  // 고른 메뉴 합계: "합계 15,000원" (가격 모르는 메뉴는 따로 표시)
+  function totalText(menus) {
+    let total = 0;
+    let unknown = 0;
+    for (const m of menus) {
+      const p = menuPrice(m);
+      if (p === null) unknown++;
+      else total += p;
+    }
+    if (!total && !unknown) return '';
+    return `합계 ${won(total)}${unknown ? ` (가격 모르는 메뉴 ${unknown}개 제외)` : ''}`;
+  }
+
+  // 메뉴별 주문 수: "김치찌개 3개 · 제육볶음 2개 · 메뉴 미정 1명"
   function menuSummary(menuCounts) {
     const entries = Object.entries(menuCounts || {}).filter(([, n]) => n > 0);
     if (!entries.length || (entries.length === 1 && entries[0][0] === '')) return '';
     entries.sort((a, b) => (a[0] === '') - (b[0] === '') || b[1] - a[1]);
-    const text = entries.map(([m, n]) => `${m ? esc(m) : '메뉴 미정'} ${n}명`).join(' · ');
+    const text = entries.map(([m, n]) => (m ? `${esc(m)} ${n}개` : `메뉴 미정 ${n}명`)).join(' · ');
     return `<p class="menu-summary">🍽️ ${text}</p>`;
   }
 
   function menuBlock(c, round, done) {
     const menus = c.menus || [];
     const counts = (round.menuCounts && round.menuCounts[c.id]) || {};
-    const myMenu = round.myVote && round.myVote.candidateId === c.id ? round.myVote.menu : undefined;
+    const myMenus = round.myVote && round.myVote.candidateId === c.id ? round.myVote.menus : [];
     let html = '';
     if (menus.length) {
       const chips = menus
@@ -197,10 +223,11 @@
           const label = `${esc(m)}${n ? ` · ${n}` : ''}`;
           return done
             ? `<button class="chip" data-closed type="button">${label}</button>`
-            : `<button class="chip${myMenu === m ? ' on' : ''}" data-menu="${i}" data-cid="${esc(c.id)}" type="button">${label}</button>`;
+            : `<button class="chip${myMenus.includes(m) ? ' on' : ''}" data-menu="${i}" data-cid="${esc(c.id)}" aria-pressed="${myMenus.includes(m)}" type="button">${label}</button>`;
         })
         .join('');
-      html += `<div class="menus"><span class="label">${done ? '메뉴 선택 현황' : `메뉴 ${menus.length}개 · 누르면 이 가게에 그 메뉴로 투표`}</span><div class="chips">${chips}</div></div>`;
+      html += `<div class="menus"><span class="label">${done ? '메뉴 선택 현황' : `메뉴 ${menus.length}개 · 여러 개 고를 수 있어요 (다시 누르면 취소)`}</span><div class="chips">${chips}</div></div>`;
+      if (!done && myMenus.length) html += `<div class="my-total">내 메뉴 ${myMenus.length}개 · ${totalText(myMenus) || '가격 정보 없음'}</div>`;
       if (done && counts['']) html += `<div class="meta">메뉴 미정 ${counts['']}명</div>`;
     } else if (!done) {
       html += '<div class="meta">등록된 메뉴가 없어요. 먹을 메뉴를 아래에 직접 추가해 주세요.</div>';
@@ -228,7 +255,11 @@
     $('roundSection').querySelector('h2').textContent = done ? '투표 결과' : '투표하기';
     const myCandidate = round.myVote && round.candidates.find((c) => c.id === round.myVote.candidateId);
     $('voteSummary').textContent = `총 ${round.totalVotes}표`;
-    $('myChoice').textContent = myCandidate ? `내 선택: ${myCandidate.name}${round.myVote.menu ? ` / ${round.myVote.menu}` : ' (메뉴 미정)'}` : '';
+    const myMenus = round.myVote ? round.myVote.menus : [];
+    const myTotal = totalText(myMenus);
+    $('myChoice').textContent = myCandidate
+      ? `내 선택: ${myCandidate.name} / ${myMenus.length ? myMenus.join(', ') : '메뉴 미정'}${myTotal ? ` · ${myTotal}` : ''}`
+      : '';
     $('myChoice').hidden = !myCandidate;
     $('roundMeta').textContent =
       (round.origin ? `기준: ${round.origin.name} · 반경 ${formatDistance(round.radius)} · ` : '') +
@@ -489,7 +520,7 @@
     });
   });
 
-  // 메뉴 칩: 누르면 그 가게 + 메뉴로 투표. 이미 고른 메뉴를 다시 누르면 메뉴만 해제(가게 투표는 유지).
+  // 메뉴 칩: 누르면 그 가게에 투표하고 메뉴를 고른다. 여러 개 선택 가능, 다시 누르면 그 메뉴만 취소(가게 투표는 유지).
   $('candidates').addEventListener('click', (e) => {
     const chip = e.target.closest('[data-menu]');
     if (!chip) return;
@@ -497,11 +528,13 @@
     const c = round.candidates.find((x) => x.id === chip.dataset.cid);
     const menu = c && c.menus[Number(chip.dataset.menu)];
     if (!menu) return;
-    const same = round.myVote && round.myVote.candidateId === c.id && round.myVote.menu === menu;
+    // 같은 가게에서 누르면 추가/취소, 다른 가게 메뉴를 누르면 그 가게로 옮겨 이 메뉴만 선택
+    const current = round.myVote && round.myVote.candidateId === c.id ? round.myVote.menus : [];
+    const menus = current.includes(menu) ? current.filter((m) => m !== menu) : [...current, menu];
     withBusy(async () => {
       const res = await api(`/api/rounds/${round.id}/vote`, {
         method: 'POST',
-        body: { voterId, candidateId: c.id, menu: same ? null : menu },
+        body: { voterId, candidateId: c.id, menus },
       });
       applyRound(res.round);
       showMessage('');
@@ -526,7 +559,7 @@
       input.value = '';
       input.blur();
       applyRound(res.round);
-      showMessage(`"${menu}" 메뉴를 추가하고 투표했어요.`);
+      showMessage(`"${menu}" 메뉴를 추가해서 내 선택에 넣었어요.`);
     });
   });
 
@@ -664,7 +697,7 @@
         .join('');
 
       rankList($('statsRestaurants'), st.restaurants, '회', (r) => r.category);
-      rankList($('statsMenus'), st.menus, '명', (r) => r.restaurant);
+      rankList($('statsMenus'), st.menus, '개', (r) => r.restaurant);
       rankList($('statsCategories'), st.categories.map((c) => ({ name: c.label, count: c.count })), '회');
       rankList($('statsVotes'), st.popularCandidates, '표', (r) => r.category);
     } catch (err) {

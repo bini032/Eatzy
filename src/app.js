@@ -7,6 +7,9 @@ const { CATEGORIES, pickCandidates, kakaoPool, listPool, tally, readVote, random
 const { loadPlaces, validatePlaces, cleanMenus } = require('./places');
 const { reverseGeocode } = require('./geocode');
 const { buildStats, kstMonth } = require('./stats');
+const { estimateTotal } = require('./price');
+
+const MAX_MENUS_PER_VOTE = 10;
 
 const RADIUS_OPTIONS = [300, 500, 1000, 1500, 2000];
 const CLOSED_MESSAGE = '투표가 완료되었습니다! 담당자에게 직접 문의해주세요.';
@@ -291,15 +294,18 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     if (round.status !== 'voting') throw closedError();
     const voterId = String(req.body?.voterId || '');
     const candidateId = req.body?.candidateId;
-    const menu = req.body?.menu ? String(req.body.menu) : null;
+    // menus: 고른 메뉴 전체 목록 (예전 화면 호환을 위해 menu 하나도 받는다)
+    const rawMenus = Array.isArray(req.body?.menus) ? req.body.menus : req.body?.menu ? [req.body.menu] : [];
+    const menus = [...new Set(rawMenus.map(String))];
     if (!/^[\w-]{8,64}$/.test(voterId)) throw new AppError(400, '투표자 정보가 올바르지 않습니다.');
     if (candidateId === null) {
       delete round.votes[voterId];
     } else {
       const candidate = round.candidates.find((c) => c.id === candidateId);
       if (!candidate) throw new AppError(400, '후보에 없는 가게입니다.');
-      if (menu && !(candidate.menus || []).includes(menu)) throw new AppError(400, '이 가게 메뉴에 없는 항목입니다.');
-      round.votes[voterId] = { candidateId, menu };
+      if (menus.length > MAX_MENUS_PER_VOTE) throw new AppError(400, `메뉴는 ${MAX_MENUS_PER_VOTE}개까지 고를 수 있습니다.`);
+      if (menus.some((m) => !(candidate.menus || []).includes(m))) throw new AppError(400, '이 가게 메뉴에 없는 항목입니다.');
+      round.votes[voterId] = { candidateId, menus };
     }
     store.save();
     res.json({ round: publicRound(round, voterId) });
@@ -322,13 +328,13 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     // 목록에서 빠진 메뉴를 고른 표는 가게 투표만 남기고 메뉴는 미정으로 돌린다.
     for (const [voter, raw] of Object.entries(round.votes)) {
       const v = readVote(raw);
-      if (v.candidateId === candidate.id && v.menu && !menus.includes(v.menu)) round.votes[voter] = { ...v, menu: null };
+      if (v.candidateId === candidate.id) round.votes[voter] = { candidateId: v.candidateId, menus: v.menus.filter((m) => menus.includes(m)) };
     }
     store.save();
     res.json({ round: publicRound(round, req.body?.voterId) });
   });
 
-  // 누구나 메뉴 하나를 추가하고 바로 그 메뉴로 투표. (수정/삭제는 관리자만 위 API로)
+  // 누구나 메뉴 하나를 추가하고 바로 그 메뉴를 내 선택에 넣는다. (수정/삭제는 관리자만 위 API로)
   app.post('/api/rounds/:id/candidates/:cid/menu-items', (req, res) => {
     const round = currentRound(req.params.id);
     if (round.status !== 'voting') throw closedError();
@@ -346,7 +352,10 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
       candidate.menus = menus;
       state().menus[candidate.id] = menus;
     }
-    round.votes[voterId] = { candidateId: candidate.id, menu };
+    // 같은 가게에 이미 투표했다면 고른 메뉴에 추가, 아니면 이 가게 + 이 메뉴로 투표
+    const prev = round.votes[voterId] ? readVote(round.votes[voterId]) : null;
+    const kept = prev && prev.candidateId === candidate.id ? prev.menus.filter((m) => m !== menu) : [];
+    round.votes[voterId] = { candidateId: candidate.id, menus: [...kept, menu].slice(-MAX_MENUS_PER_VOTE) };
     store.save();
     res.json({ round: publicRound(round, voterId) });
   });
@@ -374,7 +383,15 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
 
     const winner = round.candidates.find((c) => c.id === t.leaderId);
     round.status = 'done';
-    round.winner = { ...winner, votes: t.counts[winner.id], menuCounts: t.menuCounts[winner.id], byDraw: t.tiedIds.length > 1 };
+    const estimate = estimateTotal(t.menuCounts[winner.id]);
+    round.winner = {
+      ...winner,
+      votes: t.counts[winner.id],
+      menuCounts: t.menuCounts[winner.id],
+      estimatedTotal: estimate.total,
+      unknownPriceCount: estimate.unknown,
+      byDraw: t.tiedIds.length > 1,
+    };
     round.finishedAt = new Date().toISOString();
 
     const s = state();

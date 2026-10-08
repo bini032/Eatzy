@@ -109,21 +109,25 @@ function stripWinner(w) {
   return { id, name, category, address, phone, url, naverUrl, naverPlaceId, memo, menus, x, y };
 }
 
-// 투표 값: { candidateId, menu } (예전 형식인 가게 id 문자열도 허용)
+// 투표 값: { candidateId, menus: [...] } (메뉴 여러 개 선택 가능)
+// 예전 형식(가게 id 문자열, { menu: '하나' })도 읽을 수 있게 맞춘다
 function readVote(v) {
-  return typeof v === 'string' ? { candidateId: v, menu: null } : { candidateId: v.candidateId, menu: v.menu || null };
+  if (typeof v === 'string') return { candidateId: v, menus: [] };
+  const menus = Array.isArray(v.menus) ? v.menus : v.menu ? [v.menu] : [];
+  return { candidateId: v.candidateId, menus };
 }
 
 function tally(round) {
   const counts = Object.fromEntries(round.candidates.map((c) => [c.id, 0]));
-  // 가게별 메뉴 선택 수. 메뉴를 고르지 않은 표는 "" 키로 센다.
+  // 가게별 메뉴 선택 수(한 사람이 여러 메뉴를 고르면 각각 센다). 메뉴를 고르지 않은 사람은 "" 키로 센다.
   const menuCounts = Object.fromEntries(round.candidates.map((c) => [c.id, {}]));
   for (const raw of Object.values(round.votes)) {
-    const { candidateId, menu } = readVote(raw);
+    const { candidateId, menus } = readVote(raw);
     if (!(candidateId in counts)) continue;
     counts[candidateId]++;
-    const key = menu || '';
-    menuCounts[candidateId][key] = (menuCounts[candidateId][key] || 0) + 1;
+    for (const key of menus.length ? menus : ['']) {
+      menuCounts[candidateId][key] = (menuCounts[candidateId][key] || 0) + 1;
+    }
   }
   const max = Math.max(0, ...Object.values(counts));
   const top = max > 0 ? round.candidates.filter((c) => counts[c.id] === max).map((c) => c.id) : [];
