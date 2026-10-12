@@ -988,3 +988,76 @@ test('기본 그룹 잠금: 기본 주소에서는 조회만 되고, 투표·설
     t.close();
   }
 });
+
+test('자동 로그인: 세션 쿠키로도 로그인이 유지되고, 자동 로그인을 끄면 브라우저를 닫으면 지워지는 쿠키를 준다', async () => {
+  const t = await setup({ noKakao: true, places: MENU_LIST });
+  try {
+    const login = async (remember) => {
+      const res = await realFetch(t.base + '/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: '쿠키', password: 'pw1234', remember }),
+      });
+      return { body: await res.json(), cookie: res.headers.get('set-cookie') || '' };
+    };
+    const on = await login(true);
+    assert.match(on.cookie, /eatzy_session=/);
+    assert.match(on.cookie, /HttpOnly/i);
+    assert.match(on.cookie, /SameSite=Lax/i);
+    assert.match(on.cookie, /Max-Age=/i);
+    const off = await login(false);
+    assert.doesNotMatch(off.cookie, /Max-Age=|Expires=/i);
+
+    // 화면 저장소가 지워져 x-session이 없어도 쿠키로 같은 계정이 된다
+    const cookie = on.cookie.split(';')[0];
+    const st = await t.call('GET', '/api/state', null, { cookie });
+    assert.equal(st.body.me.name, '쿠키');
+    // 화면에 남은 토큰이 만료돼도 쿠키가 유효하면 로그인 유지
+    const stale = await t.call('GET', '/api/state', null, { cookie, 'x-session': 'expired-token' });
+    assert.equal(stale.body.me.name, '쿠키');
+    // 화면 토큰만 있고 쿠키가 없으면 쿠키를 다시 넣어 준다
+    const res = await realFetch(t.base + '/api/state', { headers: { 'x-session': on.body.token } });
+    assert.match(res.headers.get('set-cookie') || '', /eatzy_session=/);
+    await res.json();
+
+    // 로그아웃하면 세션과 쿠키가 모두 지워진다
+    const out = await realFetch(t.base + '/api/auth/logout', { method: 'POST', headers: { cookie, 'Content-Type': 'application/json' }, body: '{}' });
+    assert.match(out.headers.get('set-cookie') || '', /eatzy_session=;/);
+    await out.json();
+    const after = await t.call('GET', '/api/state', null, { cookie });
+    assert.equal(after.body.me, null);
+  } finally {
+    t.close();
+  }
+});
+
+test('내 그룹: 계정이 쓴 그룹을 기억하고, 로그인하면 마지막에 쓴 그룹이 맨 앞에 온다', async () => {
+  const t = await setup({ noKakao: true, places: MENU_LIST });
+  try {
+    const owner = await t.login('그룹장');
+    const mk = async (name) => (await t.call('POST', '/api/groups', { name }, { 'x-session': owner.token })).body.id;
+    const a = await mk('A팀');
+    const b = await mk('B팀');
+
+    const user = await t.login('팀원');
+    const visit = (g, token = user.token) => t.call('GET', '/api/state', null, { 'x-session': token, 'x-group': g });
+    await visit(a);
+    await visit(b);
+    let st = await visit(a);
+    assert.deepEqual(st.body.me.groups.map((g) => g.id), [a, b]);
+    assert.equal(st.body.me.groups[0].name, 'A팀');
+
+    // 다른 기기에서 로그인해도 마지막에 쓴 그룹(A)이 기본
+    let again = await t.call('POST', '/api/auth/login', { name: '팀원', password: 'pw1234' });
+    assert.deepEqual(again.body.groups.map((g) => g.id), [a, b]);
+    await visit(b);
+    again = await t.call('POST', '/api/auth/login', { name: '팀원', password: 'pw1234' });
+    assert.equal(again.body.groups[0].id, b);
+
+    // 그룹을 만든 계정은 만든 그룹이 기억되고, 기본 주소는 내 그룹에 들어가지 않는다
+    st = await visit('default', owner.token);
+    assert.deepEqual(st.body.me.groups.map((g) => g.id), [b, a]);
+  } finally {
+    t.close();
+  }
+});

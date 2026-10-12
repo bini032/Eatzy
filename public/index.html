@@ -22,6 +22,7 @@
         <span class="brand-by" data-i18n="app.by">by SBComms</span>
         <p class="sub" data-i18n="app.subtitle">오늘 점심, 다같이 정해요</p>
         <p id="groupBadge" class="group-badge" hidden></p>
+        <select id="groupSwitch" class="group-switch" data-i18n-aria="group.switch" aria-label="그룹 이동" hidden></select>
       </div>
       <div class="top-actions">
         <button id="userBtn" class="ghost small" type="button" hidden></button>
@@ -40,6 +41,11 @@
       <div>
         <strong data-i18n="enter.title">그룹으로 입장해 주세요</strong>
         <p data-i18n="enter.text"></p>
+        <div id="myGroups" class="my-groups" hidden>
+          <label for="myGroupSelect" data-i18n="enter.mine">내 그룹</label>
+          <select id="myGroupSelect"></select>
+          <button id="myGroupGo" class="primary small" type="button" data-i18n="enter.go">입장</button>
+        </div>
       </div>
       <button id="enterCreateBtn" class="primary small" type="button" data-i18n="enter.create">👑 새 그룹 만들기</button>
     </div>

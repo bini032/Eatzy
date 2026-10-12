@@ -80,7 +80,8 @@
 
   // ---------- 사용자 (이름 + 비밀번호 계정, 로그인 세션) ----------
   // 계정은 서버 DB에 저장되고(비밀번호는 암호화), 브라우저는 로그인 세션 토큰을 기억해 다음에 자동으로 들어간다
-  // "로그인 상태 저장"을 켜면 localStorage(브라우저를 닫아도 유지), 끄면 sessionStorage(브라우저를 닫으면 로그아웃)
+  // "자동 로그인"을 켜면 localStorage(브라우저를 닫아도 유지), 끄면 sessionStorage(브라우저를 닫으면 로그아웃).
+  // 서버도 같은 토큰을 HttpOnly 쿠키로 넣어 두므로, 브라우저 저장소가 지워져도(예: iPhone Safari) 쿠키로 다시 로그인된다
   const temp = {
     get(k) {
       try {
@@ -128,7 +129,37 @@
     $('groupBadge').hidden = !(group && !group.isDefault);
     if (group && !group.isDefault) $('groupBadge').textContent = t('group.badge', { name: group.name });
     $('shareBtn').textContent = groupId === 'default' ? t('share') : t('share.group');
+    renderMyGroups();
   }
+
+  // 내 그룹: 계정이 쓴 그룹 목록(최근 순). 첫 화면에서는 마지막에 쓴 그룹이 기본으로 선택되고,
+  // 그룹 화면에서는 그룹이 2개 이상이면 그룹 이름 대신 그룹 이동 선택 상자를 보여 준다
+  let myGroupsKey = '';
+  function renderMyGroups() {
+    const groups = (data && data.me && data.me.groups) || [];
+    const key = lang + '|' + groups.map((g) => g.id + ':' + g.name).join(',');
+    if (key !== myGroupsKey) {
+      myGroupsKey = key;
+      const options = groups.map((g, i) => `<option value="${esc(g.id)}">${esc(i === 0 ? t('group.recent', { name: g.name }) : g.name)}</option>`).join('');
+      const keep = $('myGroupSelect').value;
+      $('myGroupSelect').innerHTML = options;
+      // 다른 그룹을 고르고 있던 중이 아니면 마지막에 쓴 그룹을 고른다
+      $('myGroupSelect').value = groups.some((g) => g.id === keep) ? keep : groups[0] ? groups[0].id : '';
+      $('groupSwitch').innerHTML = groups.map((g) => `<option value="${esc(g.id)}">${esc(t('group.badge', { name: g.name }))}</option>`).join('');
+    }
+    $('myGroups').hidden = !(isDefaultGroup && groups.length);
+    const switchable = !isDefaultGroup && groups.length > 1 && groups.some((g) => g.id === groupId);
+    $('groupSwitch').hidden = !switchable;
+    if (switchable) {
+      $('groupSwitch').value = groupId;
+      $('groupBadge').hidden = true;
+    }
+  }
+  const goGroup = (id) => {
+    if (id && id !== groupId) location.href = `/g/${encodeURIComponent(id)}`;
+  };
+  $('myGroupGo').addEventListener('click', () => goGroup($('myGroupSelect').value));
+  $('groupSwitch').addEventListener('change', (e) => goGroup(e.target.value));
 
   // 로그인 창: 일반 로그인/가입 / 관리자로 시작하기(새 그룹 만들기)
   let groupMode = false;
@@ -194,13 +225,19 @@
 
     $('userOk').disabled = true;
     try {
-      const res = await api('/api/auth/login', { method: 'POST', body: { name, password } });
-      saveSession({ token: res.token, id: res.user.id, name: res.user.name }, $('userRemember').checked);
+      const remember = $('userRemember').checked;
+      const res = await api('/api/auth/login', { method: 'POST', body: { name, password, remember } });
+      saveSession({ token: res.token, id: res.user.id, name: res.user.name }, remember);
       // 관리자로 시작하기: 새 그룹을 만들고 그 그룹 링크로 이동 (만든 계정이 그 그룹 관리자)
       if (groupMode) {
         const g = await api('/api/groups', { method: 'POST', body: { name: groupName } });
         local.set('eatzy-group-created', g.name);
         location.href = `/g/${g.id}`;
+        return;
+      }
+      // 첫 화면에서 로그인하면 마지막에 쓴 그룹으로 바로 들어간다
+      if (isDefaultGroup && res.groups && res.groups.length) {
+        location.href = `/g/${encodeURIComponent(res.groups[0].id)}`;
         return;
       }
       $('userDialog').close();
@@ -213,6 +250,13 @@
       $('userOk').disabled = false;
     }
   });
+
+  // 브라우저 저장소에는 로그인 정보가 없지만 서버 쿠키로 로그인되어 있으면 그 계정으로 이어서 쓴다
+  function restoreSession(me) {
+    const keepToken = session && session.id === me.id ? session.token : null;
+    saveSession({ token: keepToken, id: me.id, name: me.name }, true);
+    if ($('userDialog').open && $('userDialog').dataset.required) $('userDialog').close();
+  }
 
   // 로그인이 만료되었거나 로그아웃된 세션이면 다시 로그인 창
   function sessionExpired() {
@@ -234,7 +278,7 @@
   $('enterDialogCreate').addEventListener('click', openCreateGroup);
   $('enterCreateBtn').addEventListener('click', openCreateGroup);
 
-  const ALLOWED_ON_ENTRY = '#userBtn, #langSelect, #themeBtn, #overviewSection, dialog, #enterBanner, .footer';
+  const ALLOWED_ON_ENTRY = '#userBtn, #langSelect, #themeBtn, #groupSwitch, #overviewSection, dialog, #enterBanner, .footer';
   function blockedOnEntry(el) {
     if (!isDefaultGroup || !el || !el.closest) return false;
     const control = el.closest('button, a, select, input, textarea, summary, label, [data-pop], .chip');
@@ -278,7 +322,7 @@
   async function api(path, options = {}) {
     const headers = { 'x-lang': lang, 'x-group': groupId };
     if (options.body) headers['Content-Type'] = 'application/json';
-    if (session) headers['x-session'] = session.token;
+    if (session && session.token) headers['x-session'] = session.token;
     const res = await fetch(path, {
       method: options.method || 'GET',
       headers,
@@ -641,6 +685,7 @@
   async function refresh() {
     try {
       data = await api('/api/state');
+      if (data.me && (!session || session.id !== data.me.id)) restoreSession(data.me);
       if (session && !data.me) return sessionExpired();
       render();
       if (isSuper() && Date.now() - overviewAt > 30000) loadOverview();

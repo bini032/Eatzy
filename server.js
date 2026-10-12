@@ -48,3 +48,10 @@ store
     console.error('저장된 데이터를 불러오지 못해 서버를 시작하지 않습니다:', err.message);
     process.exit(1);
   });
+
+// 배포·재시작 때 Render가 보내는 종료 신호: 아직 DB로 보내는 중인 저장을 끝내고 종료한다
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  process.once(signal, () => {
+    Promise.race([store.flush(), new Promise((r) => setTimeout(r, 5000))]).finally(() => process.exit(0));
+  });
+}

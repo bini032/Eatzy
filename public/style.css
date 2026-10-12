@@ -365,6 +365,21 @@ dialog h3 { font-size: 18px; }
 .enter-banner > div { flex: 1; min-width: 0; }
 .enter-banner p { margin: 2px 0 0; font-size: 13px; color: hsl(var(--muted-foreground)); }
 .enter-banner button { flex: 0 0 auto; }
+.my-groups { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.my-groups label { font-size: 13px; font-weight: 600; }
+.my-groups select { flex: 1 1 160px; min-width: 0; width: auto; height: 36px; }
+.group-switch {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  margin: 8px 0 0;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 9999px;
+  background: hsl(var(--secondary));
+  font-size: 13px;
+  font-weight: 600;
+}
 @media (max-width: 480px) {
   .enter-banner { flex-direction: column; align-items: stretch; }
 }

@@ -16,6 +16,11 @@ const { cleanName, userIdFor } = require('./users');
 const { hashPassword, verifyPassword, tooManyFailures, recordFailure, clearFailures } = require('./auth');
 const { checkEmbeddable } = require('./frame');
 const MAX_SESSIONS_PER_USER = 10;
+// 로그인 세션 쿠키: 브라우저 저장소(localStorage)가 지워져도 로그인이 유지되도록 같은 토큰을 HttpOnly 쿠키에도 둔다
+const SESSION_COOKIE = 'eatzy_session';
+const SESSION_COOKIE_DAYS = 365;
+const MAX_MY_GROUPS = 30; // 계정별로 기억하는 최근 그룹 수
+const GROUP_TOUCH_MS = 10 * 60 * 1000; // 같은 그룹을 계속 쓰는 동안은 10분에 한 번만 사용 시각을 저장
 
 const MAX_GROUPS = 200;
 const sha256 = (v) => crypto.createHash('sha256').update(String(v)).digest('hex');
@@ -81,16 +86,71 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
 
   // ---------- 계정과 로그인 ----------
   // 로그인 세션: 화면이 x-session 헤더로 보내는 토큰. DB에는 토큰의 해시만 저장한다
-  app.use('/api', (req, res, next) => {
-    const token = req.get('x-session');
+  // 헤더(x-session)를 먼저 보고, 없거나 만료된 토큰이면 쿠키를 본다
+  const readCookie = (req, name) => {
+    for (const part of String(req.get('cookie') || '').split(';')) {
+      const i = part.indexOf('=');
+      if (i > 0 && part.slice(0, i).trim() === name) {
+        try {
+          return decodeURIComponent(part.slice(i + 1).trim());
+        } catch {
+          return null;
+        }
+      }
+    }
+    return null;
+  };
+  const sessionFor = (token) => {
     const session = token ? store.state.sessions[sha256(token)] : null;
+    return session && store.state.users[session.userId] ? session : null;
+  };
+  const cookieOptions = (req, remember) => ({
+    httpOnly: true,
+    sameSite: 'lax',
+    path: '/',
+    secure: req.secure || req.get('x-forwarded-proto') === 'https',
+    // 자동 로그인이면 브라우저를 닫아도 남는 쿠키, 아니면 브라우저를 닫으면 지워지는 쿠키
+    ...(remember ? { maxAge: SESSION_COOKIE_DAYS * 24 * 60 * 60 * 1000 } : {}),
+  });
+  app.use('/api', (req, res, next) => {
+    const headerToken = req.get('x-session');
+    const cookieToken = readCookie(req, SESSION_COOKIE);
+    let token = headerToken;
+    let session = sessionFor(headerToken);
+    if (!session && cookieToken) {
+      token = cookieToken;
+      session = sessionFor(cookieToken);
+    }
     const user = session ? store.state.users[session.userId] : null;
     req.user = user ? { id: session.userId, name: user.name, super: Boolean(user.super) } : null;
     req.sessionKey = user ? sha256(token) : null;
+    // 화면에만 토큰이 남아 있고 쿠키가 없어졌으면 쿠키를 다시 넣는다
+    if (session && token !== cookieToken) res.cookie(SESSION_COOKIE, token, cookieOptions(req, session.remember !== false));
     next();
   });
 
   const userView = (u) => (u ? { id: u.id, name: u.name, isSuper: u.super } : null);
+
+  // 계정이 쓴 그룹 (최근 순). 마지막에 쓴 그룹이 맨 앞
+  function myGroups(userId) {
+    const used = (store.state.users[userId] && store.state.users[userId].groups) || {};
+    return Object.entries(used)
+      .filter(([id]) => id !== 'default' && store.state.groups[id])
+      .sort((a, b) => String(b[1]).localeCompare(String(a[1])))
+      .map(([id, at]) => ({ id, name: (store.state.groups[id].meta && store.state.groups[id].meta.name) || id, lastUsedAt: at }));
+  }
+  function touchGroup(userId, id) {
+    const user = store.state.users[userId];
+    if (!user || id === 'default' || !store.state.groups[id]) return;
+    const groups = (user.groups = user.groups || {});
+    const now = Date.now();
+    if (user.lastGroup === id && groups[id] && now - Date.parse(groups[id]) < GROUP_TOUCH_MS) return;
+    groups[id] = new Date(now).toISOString();
+    user.lastGroup = id;
+    const old = Object.entries(groups).sort((a, b) => String(b[1]).localeCompare(String(a[1]))).slice(MAX_MY_GROUPS);
+    for (const [k] of old) delete groups[k];
+    store.save();
+  }
 
   function requireUser(req) {
     if (!req.user) throw new AppError(401, '로그인해 주세요.', 'no_user');
@@ -107,7 +167,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
 
   // 가입 겸 로그인: 처음 쓰는 이름이면 가입, 있는 이름이면 비밀번호 확인.
   // SB는 전체 관리자 계정이다. 다른 계정처럼 처음 입력한 비밀번호로 가입되고, 이후에는 그 비밀번호로 로그인한다.
-  app.post('/api/auth/login', (req, res) => {
+  app.post('/api/auth/login', async (req, res) => {
     const name = cleanName(req.body?.name);
     const password = String(req.body?.password ?? '');
     if (!name || !password) throw new AppError(400, '이름과 비밀번호를 입력해 주세요.');
@@ -134,12 +194,20 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
 
     // 새 세션 발급 (계정당 최근 10개만 유지)
     const token = crypto.randomBytes(32).toString('base64url');
+    const remember = req.body?.remember !== false;
     const sessions = store.state.sessions;
-    sessions[sha256(token)] = { userId: id, createdAt: now, lastSeenAt: now };
+    sessions[sha256(token)] = { userId: id, createdAt: now, lastSeenAt: now, remember };
     const mine = Object.entries(sessions).filter(([, s]) => s.userId === id).sort((a, b) => a[1].createdAt.localeCompare(b[1].createdAt));
     for (const [k] of mine.slice(0, Math.max(0, mine.length - MAX_SESSIONS_PER_USER))) delete sessions[k];
     store.save();
-    res.status(isNew ? 201 : 200).json({ token, user: userView({ id, name: users[id].name, super: Boolean(users[id].super) }), isNew });
+    await store.flush(); // 응답 전에 DB 저장을 끝내 둔다 (곧바로 서버가 재시작돼도 로그인이 남도록)
+    res.cookie(SESSION_COOKIE, token, cookieOptions(req, remember));
+    res.status(isNew ? 201 : 200).json({
+      token,
+      user: userView({ id, name: users[id].name, super: Boolean(users[id].super) }),
+      isNew,
+      groups: myGroups(id),
+    });
   });
 
   app.post('/api/auth/logout', (req, res) => {
@@ -147,6 +215,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
       delete store.state.sessions[req.sessionKey];
       store.save();
     }
+    res.clearCookie(SESSION_COOKIE, { path: '/' });
     res.json({ ok: true });
   });
 
@@ -165,6 +234,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     do id = crypto.randomBytes(6).toString('base64url').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8);
     while (id.length < 6 || groups[id]);
     groups[id] = { ...defaultState(), meta: { name, owner: owner.name, ownerId: owner.id, createdAt: new Date().toISOString() } };
+    touchGroup(owner.id, id);
     store.save();
     res.status(201).json({ id, name });
   });
@@ -174,6 +244,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     const groupState = store.state.groups[id];
     if (!groupState) throw new AppError(404, '그룹을 찾을 수 없습니다.', 'no_group');
     if (lockDefaultGroup && id === 'default' && req.method !== 'GET') throw new AppError(403, '그룹으로 입장해 주세요.', 'enter_group');
+    if (req.user) touchGroup(req.user.id, id); // 마지막에 쓴 그룹 기억 (다음 로그인 때 기본으로 선택)
     groupCtx.run({ id, state: groupState }, next);
   });
 
@@ -302,7 +373,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     const src = placeSource();
     res.json({
       group: { id: groupId(), name: s.meta ? s.meta.name : null, owner: s.meta ? s.meta.owner : null, isDefault: groupId() === 'default' },
-      me: req.user ? { ...userView(req.user), isAdmin: isAdminReq(req) } : null,
+      me: req.user ? { ...userView(req.user), isAdmin: isAdminReq(req), groups: myGroups(req.user.id) } : null,
       source: src.type,
       placesOrigin: src.origin,
       placesCount: src.places.length,
