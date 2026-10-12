@@ -682,10 +682,26 @@
     $('history').innerHTML = items
       .map(
         (h) => `<li><span>${esc(catName(h.winner.categoryLabel))} · <strong>${esc(h.winner.name)}</strong> ${ratingBadge(h.winner.id)}</span>
-          <span class="history-right"><span class="muted">${formatTime(h.decidedAt)}</span>${reviewButton(h.winner, true)}</span></li>`
+          <span class="history-right"><span class="muted">${formatTime(h.decidedAt)}</span>${reviewButton(h.winner, true)}${
+            isAdmin() ? `<button class="small ghost danger review-mini" type="button" data-history-del="${esc(h.roundId)}" title="${esc(t('history.delete'))}" aria-label="${esc(t('history.delete'))}">🗑</button>` : ''
+          }</span></li>`
       )
       .join('');
   }
+
+  // 결정 기록 지우기 (관리자)
+  $('history').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-history-del]');
+    if (!btn) return;
+    const h = (data.history || []).find((x) => x.roundId === btn.dataset.historyDel);
+    if (!h || !confirm(t('history.confirmDelete', { name: h.winner.name, time: formatTime(h.decidedAt) }))) return;
+    withBusy(async () => {
+      await api(`/api/history/${encodeURIComponent(h.roundId)}`, { method: 'DELETE' });
+      showMessage(t('history.deleted', { name: h.winner.name }));
+      statsKey = null;
+      await refresh();
+    });
+  });
 
   function render() {
     if (!data) return;

@@ -112,6 +112,9 @@ window.EATZY_I18N = {
     'decision.time': '결정 시각 {time}',
 
     'history.title': '최근 결정',
+    'history.delete': "이 결정 기록 지우기 (관리자)",
+    'history.confirmDelete': "{time} \"{name}\" 결정 기록을 지울까요? 최근 결정과 통계에서 빠지고 되돌릴 수 없어요.",
+    'history.deleted': "\"{name}\" 결정 기록을 지웠어요.",
 
     'stats.title': '📊 통계',
     'stats.period': '통계 기간',
@@ -434,6 +437,9 @@ window.EATZY_I18N = {
     'decision.time': 'Decided at {time}',
 
     'history.title': 'Recent decisions',
+    'history.delete': "Delete this decision (admin)",
+    'history.confirmDelete': "Delete the \"{name}\" decision from {time}? It will be removed from recent decisions and stats, and this cannot be undone.",
+    'history.deleted': "Deleted the \"{name}\" decision.",
 
     'stats.title': '📊 Stats',
     'stats.period': 'Stats period',
@@ -756,6 +762,9 @@ window.EATZY_I18N = {
     'decision.time': '決定時刻 {time}',
 
     'history.title': '最近の決定',
+    'history.delete': "この決定の記録を削除（管理者）",
+    'history.confirmDelete': "{time}の「{name}」の決定記録を削除しますか？最近の決定と統計から外れ、元に戻せません。",
+    'history.deleted': "「{name}」の決定記録を削除しました。",
 
     'stats.title': '📊 統計',
     'stats.period': '統計期間',
@@ -1078,6 +1087,9 @@ window.EATZY_I18N = {
     'decision.time': '决定时间 {time}',
 
     'history.title': '最近的决定',
+    'history.delete': "删除这条决定记录（管理员）",
+    'history.confirmDelete': "要删除 {time} 的“{name}”决定记录吗？它会从最近的决定和统计中移除，且无法恢复。",
+    'history.deleted': "已删除“{name}”的决定记录。",
 
     'stats.title': '📊 统计',
     'stats.period': '统计期间',

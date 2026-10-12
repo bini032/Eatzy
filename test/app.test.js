@@ -1138,3 +1138,37 @@ test('별점: 로그인한 사람이 가게마다 하나씩 남기고 고치며,
     t.close();
   }
 });
+
+test('결정 기록 지우기: 관리자만 지우고, 통계·지난번 결정 가게·결과 화면에서도 빠진다', async () => {
+  const t = await setup({ noKakao: true, places: MENU_LIST });
+  try {
+    const decide = async () => {
+      const { round } = (await t.call('POST', '/api/rounds', {}, { 'x-admin-key': 'hs' })).body;
+      const c = round.candidates.find((x) => !x.pinned);
+      await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V1, candidateId: c.id });
+      await t.call('POST', `/api/rounds/${round.id}/complete`, { key: 'hs' });
+      return { round, c };
+    };
+    const first = await decide();
+    const second = await decide();
+
+    let r = await t.call('DELETE', `/api/history/${second.round.id}`, { voterId: V1 });
+    assert.equal(r.status, 403);
+    r = await t.call('DELETE', '/api/history/nope', null, { 'x-admin-key': 'hs' });
+    assert.equal(r.status, 404);
+    r = await t.call('DELETE', `/api/history/${second.round.id}`, null, { 'x-admin-key': 'hs' });
+    assert.equal(r.body.removed.name, second.c.name);
+
+    const st = (await t.call('GET', '/api/state')).body;
+    assert.deepEqual(st.history.map((h) => h.roundId), [first.round.id]);
+    assert.equal(st.round, null, '지운 결정이 지금 결과면 결과 화면도 내린다');
+    assert.equal(st.lastWinner.id, first.c.id, '지난번 결정 가게는 남은 마지막 기록으로');
+    const stats = (await t.call('GET', '/api/stats')).body;
+    assert.equal(stats.summary.decisions, 1);
+
+    await t.call('DELETE', `/api/history/${first.round.id}`, null, { 'x-admin-key': 'hs' });
+    assert.equal((await t.call('GET', '/api/state')).body.lastWinner, null);
+  } finally {
+    t.close();
+  }
+});

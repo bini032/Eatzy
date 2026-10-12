@@ -849,6 +849,23 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     res.json({ round: publicRound(round, req.user && req.user.id) });
   });
 
+  // 결정 기록 지우기 (관리자): 잘못 확정했거나 연습으로 만든 결정을 기록·통계에서 뺀다
+  app.delete('/api/history/:roundId', (req, res) => {
+    requireAdmin(req);
+    const s = state();
+    const i = s.history.findIndex((h) => h.roundId === req.params.roundId);
+    if (i < 0) throw new AppError(404, '결정 기록을 찾을 수 없습니다.');
+    const [removed] = s.history.splice(i, 1);
+    // 지운 결정이 화면에 떠 있는 결과면 결과 화면도 내리고, "지난번 결정 가게"는 남은 마지막 기록으로 되돌린다
+    if (s.round && s.round.id === removed.roundId) s.round = null;
+    if (s.lastWinner && s.lastWinner.decidedAt === removed.decidedAt) {
+      const last = s.history.at(-1);
+      s.lastWinner = last ? { ...last.winner, decidedAt: last.decidedAt } : null;
+    }
+    store.save();
+    res.json({ ok: true, removed: { roundId: removed.roundId, name: removed.winner && removed.winner.name } });
+  });
+
   app.post('/api/rounds/:id/complete', (req, res) => {
     const round = currentRound(req.params.id);
     requireAdmin(req);
