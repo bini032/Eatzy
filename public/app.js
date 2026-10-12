@@ -360,11 +360,22 @@
     return /^https?:\/\//.test(u || '') ? u : '';
   }
 
-  // 네이버 지도: 장소 번호가 있으면 그 장소, 링크만 있으면 그 링크, 없으면 가게 이름 검색
+  // 네이버 지도 검색어: 가게 이름 + 구 + 도로명(번지·층·건물명 제외). 예) "백옥 을지로 중구 을지로5길"
+  // 이름만 쓰면 다른 지점이 먼저 나오고, 전체 주소를 붙이면 가게 대신 주소가 검색되어 이 정도만 붙인다
+  function naverQuery(p) {
+    const parts = String(p.address || '')
+      .replace(/\(.*?\)/g, ' ')
+      .split(/\s+/);
+    const gu = parts.find((w) => /^[가-힣]+[구군]$/.test(w));
+    const road = parts.find((w) => /^[가-힣0-9]+(로|길)$/.test(w)) || parts.find((w) => /^[가-힣0-9]+(동|가)$/.test(w));
+    return [p.name, gu, road].filter(Boolean).join(' ');
+  }
+
+  // 네이버 지도: 장소 번호가 있으면 그 장소, 링크만 있으면 그 링크, 없으면 이름+구+도로명 검색
   function naverMapUrl(p) {
     if (p.naverPlaceId) return `https://map.naver.com/p/entry/place/${encodeURIComponent(p.naverPlaceId)}`;
     if (safeUrl(p.naverUrl)) return p.naverUrl;
-    return `https://map.naver.com/p/search/${encodeURIComponent(p.name)}`;
+    return `https://map.naver.com/p/search/${encodeURIComponent(naverQuery(p))}`;
   }
 
   // 가게 정보 링크: 네이버 메뉴 탭이 있으면 그쪽, 없으면 출처 링크
