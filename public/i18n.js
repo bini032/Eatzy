@@ -1,10 +1,8 @@
 // 화면 언어 팩. {이름} 자리는 t(key, params)로 채운다. 가게 이름·메뉴·메모 같은 데이터는 번역하지 않는다.
 window.EATZY_I18N = {
   ko: {
-    'app.title': 'Eatzy 점심 투표 · SBComms',
+    'app.title': 'Eatzy 점심 투표',
     'app.subtitle': '오늘 점심, 다같이 정해요',
-    'app.by': 'by SBComms',
-    'footer': 'Eatzy는 SBComms의 솔루션입니다.',
     'theme.toDark': '다크 모드로 전환',
     'theme.toLight': '라이트 모드로 전환',
     'lang.label': '언어',
@@ -283,10 +281,8 @@ window.EATZY_I18N = {
   },
 
   en: {
-    'app.title': 'Eatzy Lunch Vote · SBComms',
+    'app.title': 'Eatzy Lunch Vote',
     'app.subtitle': "Let's pick today's lunch together",
-    'app.by': 'by SBComms',
-    'footer': 'Eatzy is a solution by SBComms.',
     'theme.toDark': 'Switch to dark mode',
     'theme.toLight': 'Switch to light mode',
     'lang.label': 'Language',
@@ -565,10 +561,8 @@ window.EATZY_I18N = {
   },
 
   ja: {
-    'app.title': 'Eatzy ランチ投票 · SBComms',
+    'app.title': 'Eatzy ランチ投票',
     'app.subtitle': '今日のランチ、みんなで決めよう',
-    'app.by': 'by SBComms',
-    'footer': 'Eatzy は SBComms のソリューションです。',
     'theme.toDark': 'ダークモードに切り替え',
     'theme.toLight': 'ライトモードに切り替え',
     'lang.label': '言語',
@@ -847,10 +841,8 @@ window.EATZY_I18N = {
   },
 
   zh: {
-    'app.title': 'Eatzy 午餐投票 · SBComms',
+    'app.title': 'Eatzy 午餐投票',
     'app.subtitle': '今天午餐，大家一起定',
-    'app.by': 'by SBComms',
-    'footer': 'Eatzy 是 SBComms 的解决方案。',
     'theme.toDark': '切换到深色模式',
     'theme.toLight': '切换到浅色模式',
     'lang.label': '语言',

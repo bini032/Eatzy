@@ -71,11 +71,10 @@ code { font-size: 13px; background: hsl(var(--muted)); padding: 1px 5px; border-
 .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
 .brand h1 { display: inline; }
 .brand-dot { color: hsl(var(--brand)); }
-.brand-by { margin-left: 6px; font-size: 12px; font-weight: 600; color: hsl(var(--muted-foreground)); letter-spacing: 0.02em; }
 .top-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }
 .top-actions .lang-select { width: auto; height: 36px; font-size: 13px; padding: 0 8px; }
 .icon-btn { width: 36px; padding: 0; }
-.footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid hsl(var(--border)); display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 12px; color: hsl(var(--muted-foreground)); }
+.footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid hsl(var(--border)); display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; font-size: 12px; color: hsl(var(--muted-foreground)); }
 
 /* ---------- Button ---------- */
 button, select, input, textarea { font: inherit; color: inherit; }
