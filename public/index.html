@@ -165,6 +165,21 @@
           <p class="muted small-text" data-i18n="stats.votesDesc"></p>
           <ol id="statsVotes" class="rank"></ol>
         </div>
+        <div class="panel">
+          <h3 data-i18n="stats.ratingTop">⭐ 별점 높은 가게</h3>
+          <p id="statsRatingSummary" class="muted small-text"></p>
+          <ol id="statsRatingTop" class="rank"></ol>
+        </div>
+        <div class="panel">
+          <h3 data-i18n="stats.ratingLow">👎 별점 낮은 가게</h3>
+          <p id="statsRatingRule" class="muted small-text"></p>
+          <ol id="statsRatingLow" class="rank"></ol>
+        </div>
+        <div class="panel">
+          <h3 data-i18n="stats.reviews">📝 최근 후기</h3>
+          <p class="muted small-text" data-i18n="stats.reviewsDesc"></p>
+          <ul id="statsReviews" class="review-list"></ul>
+        </div>
       </div>
     </section>
 
@@ -184,6 +199,15 @@
         <summary data-i18n="admin.title">🔧 가게 관리 (관리자)</summary>
         <p id="adminError" class="error" hidden></p>
         <div id="adminBody">
+          <form id="ratingForm" class="rating-form">
+            <h3 class="admin-subhead" data-i18n="admin.ratingTitle">⭐ 별점 낮은 가게 후보에서 빼기</h3>
+            <p class="muted small-text" data-i18n="admin.ratingDesc"></p>
+            <div class="rating-form-row">
+              <select id="ratingMin" data-i18n-aria="admin.ratingMinAria" aria-label="평균 별점 기준"></select>
+              <select id="ratingReviews" data-i18n-aria="admin.ratingReviewsAria" aria-label="후기 수 기준"></select>
+              <button class="small" type="submit" data-i18n="save">저장</button>
+            </div>
+          </form>
           <p id="adminDesc" class="muted small-text"></p>
           <div id="adminList"></div>
 
@@ -253,6 +277,23 @@
         <button id="menuCancel" class="ghost" type="button" data-i18n="cancel">취소</button>
         <button id="menuOk" class="primary" type="submit" data-i18n="save">저장</button>
       </div>
+    </form>
+  </dialog>
+
+  <dialog id="reviewDialog">
+    <form id="reviewForm">
+      <h3 id="reviewTitle"></h3>
+      <p class="muted small-text" data-i18n="review.desc"></p>
+      <div id="reviewStars" class="stars-input" role="radiogroup" data-i18n-aria="review.starsAria" aria-label="별점"></div>
+      <textarea id="reviewComment" rows="2" maxlength="200" data-i18n-placeholder="review.commentPh"></textarea>
+      <p id="reviewError" class="error" hidden></p>
+      <div class="dialog-actions">
+        <button id="reviewDelete" class="ghost danger" type="button" data-i18n="review.delete" hidden>지우기</button>
+        <button id="reviewCancel" class="ghost" type="button" data-i18n="cancel">취소</button>
+        <button id="reviewOk" class="primary" type="submit" data-i18n="save">저장</button>
+      </div>
+      <h4 class="review-others-title" data-i18n="review.others">후기</h4>
+      <ul id="reviewList" class="review-list"></ul>
     </form>
   </dialog>
 

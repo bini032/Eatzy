@@ -15,6 +15,7 @@ const { defaultState } = require('./store');
 const { cleanName, userIdFor } = require('./users');
 const { hashPassword, verifyPassword, tooManyFailures, recordFailure, clearFailures } = require('./auth');
 const { checkEmbeddable } = require('./frame');
+const reviews = require('./reviews');
 const MAX_SESSIONS_PER_USER = 10;
 // 로그인 세션 쿠키: 브라우저 저장소(localStorage)가 지워져도 로그인이 유지되도록 같은 토큰을 HttpOnly 쿠키에도 둔다
 const SESSION_COOKIE = 'eatzy_session';
@@ -370,6 +371,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
 
   app.get('/api/state', (req, res) => {
     const s = state();
+    const filter = reviews.ratingFilter(s.settings);
     const src = placeSource();
     res.json({
       group: { id: groupId(), name: s.meta ? s.meta.name : null, owner: s.meta ? s.meta.owner : null, isDefault: groupId() === 'default' },
@@ -387,6 +389,9 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
       round: publicRound(s.round, req.user && req.user.id),
       lastWinner: s.lastWinner,
       history: s.history.slice(-10).reverse(),
+      ratings: reviews.ratingSummary(s.reviews, filter, req.user && req.user.id),
+      ratingFilter: filter,
+      ratingOptions: { minRating: reviews.MIN_RATING_OPTIONS, minReviews: reviews.MIN_REVIEWS_OPTIONS },
     });
   });
 
@@ -394,7 +399,8 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
   app.get('/api/stats', (req, res) => {
     const q = String(req.query.month || '');
     const month = q === 'all' || /^\d{4}-\d{2}$/.test(q) ? q : kstMonth(Date.now());
-    res.json(buildStats(state().history || [], month, CATEGORIES));
+    const s = state();
+    res.json({ ...buildStats(s.history || [], month, CATEGORIES), ratings: reviews.buildRatingStats(s.reviews, month, reviews.ratingFilter(s.settings)) });
   });
 
   // 위치 지정: 기본 위치(더존을지타워), 브라우저 현재 위치 좌표, 장소 검색 결과
@@ -504,7 +510,9 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     const origin = await resolveOrigin();
     const radius = s.settings.radius;
     const poolFor = src.type === 'list' ? async (cat) => listPool(src.places, cat, origin, radius) : (cat) => kakaoPool(cat, origin, radius);
-    const { candidates, missing } = await pickCandidates(s, origin, radius, poolFor);
+    // 별점 기준 미달 가게는 자동 후보에서 뺀다 (직접 고르기는 그대로 허용)
+    const exclude = reviews.excludedIds(s.reviews, reviews.ratingFilter(s.settings));
+    const { candidates, missing } = await pickCandidates(s, origin, radius, poolFor, exclude);
     if (candidates.length === 0) {
       throw new AppError(
         404,
@@ -664,8 +672,86 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
   app.get('/api/place-list', (req, res) => {
     const s = state();
     res.json({
-      places: basePlaces().map((p) => ({ id: p.id, name: p.name, category: p.category, address: p.address, menus: (s.menus[p.id] || p.menus || []).length })),
+      places: basePlaces().map((p) => ({
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        address: p.address,
+        menus: (s.menus[p.id] || p.menus || []).length,
+        rating: reviews.placeRating(s.reviews[p.id]),
+      })),
     });
+  });
+
+  // ---------- 후기·별점 ----------
+  // 별점을 남길 수 있는 가게: 이 그룹의 가게 목록, 지금 투표 후보, 결정 기록에 있는 가게
+  function findPlace(id) {
+    const s = state();
+    const fromRound = s.round && s.round.candidates.find((c) => c.id === id);
+    if (fromRound) return { name: fromRound.name, category: fromRound.categoryLabel || fromRound.category };
+    const fromHistory = [...s.history].reverse().find((h) => h.winner && h.winner.id === id);
+    if (fromHistory) return { name: fromHistory.winner.name, category: fromHistory.winner.categoryLabel || fromHistory.winner.category };
+    const fromList = basePlaces().find((p) => p.id === id);
+    if (fromList) return { name: fromList.name, category: fromList.category };
+    if (s.reviews[id]) return { name: s.reviews[id].name, category: s.reviews[id].category };
+    return null;
+  }
+  const ratingsView = (req) => reviews.ratingSummary(state().reviews, reviews.ratingFilter(state().settings), req.user && req.user.id);
+
+  // 가게 후기 목록 (최근 순)
+  app.get('/api/reviews/:placeId', (req, res) => {
+    const entry = state().reviews[req.params.placeId];
+    const items = entry ? Object.entries(entry.items) : [];
+    res.json({
+      rating: reviews.placeRating(entry),
+      reviews: items
+        .map(([uid, r]) => ({ name: r.name, rating: r.rating, comment: r.comment || '', at: r.at, mine: Boolean(req.user && uid === req.user.id) }))
+        .sort((a, b) => b.at.localeCompare(a.at)),
+    });
+  });
+
+  // 별점 남기기/고치기: 한 사람당 가게마다 하나
+  app.post('/api/reviews', (req, res) => {
+    const user = requireUser(req);
+    const placeId = String(req.body?.placeId || '');
+    const rating = Number(req.body?.rating);
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) throw new AppError(400, '별점은 1~5 사이로 골라 주세요.');
+    const place = findPlace(placeId);
+    if (!place) throw new AppError(404, '가게를 찾을 수 없습니다.');
+    const comment = String(req.body?.comment || '').trim().replace(/\s+/g, ' ').slice(0, reviews.MAX_COMMENT);
+    const s = state();
+    const entry = (s.reviews[placeId] = s.reviews[placeId] || { name: place.name, category: place.category, items: {} });
+    entry.name = place.name;
+    entry.category = place.category;
+    entry.items[user.id] = { name: user.name, rating, comment, at: new Date().toISOString() };
+    store.save();
+    res.json({ ratings: ratingsView(req) });
+  });
+
+  app.delete('/api/reviews/:placeId', (req, res) => {
+    const user = requireUser(req);
+    const s = state();
+    const entry = s.reviews[req.params.placeId];
+    if (entry && entry.items[user.id]) {
+      delete entry.items[user.id];
+      if (!Object.keys(entry.items).length) delete s.reviews[req.params.placeId];
+      store.save();
+    }
+    res.json({ ratings: ratingsView(req) });
+  });
+
+  // 별점 낮은 가게 제외 기준 (관리자)
+  app.post('/api/settings/rating', (req, res) => {
+    requireAdmin(req);
+    const minRating = Number(req.body?.minRating);
+    const minReviews = Number(req.body?.minReviews);
+    if (!reviews.MIN_RATING_OPTIONS.includes(minRating) || !reviews.MIN_REVIEWS_OPTIONS.includes(minReviews)) {
+      throw new AppError(400, '지원하지 않는 별점 기준입니다.');
+    }
+    const s = state();
+    s.settings.ratingFilter = { minRating, minReviews };
+    store.save();
+    res.json({ ratingFilter: s.settings.ratingFilter, ratings: ratingsView(req) });
   });
 
   // 결정 후 메뉴 고르기: 투표를 안 했거나 다른 가게에 투표한 사람도 결정된 가게의 메뉴를 고르고 바꿀 수 있다.

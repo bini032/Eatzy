@@ -1061,3 +1061,80 @@ test('내 그룹: 계정이 쓴 그룹을 기억하고, 로그인하면 마지�
     t.close();
   }
 });
+
+test('별점: 로그인한 사람이 가게마다 하나씩 남기고 고치며, 평균이 낮은 가게는 자동 후보에서 빠진다', async () => {
+  const places = [
+    { name: '별점한식A', category: '한식' },
+    { name: '별점한식B', category: '한식' },
+    { name: '별점중식', category: '중식' },
+  ];
+  const t = await setup({ noKakao: true, places });
+  try {
+    const list = (await t.call('GET', '/api/place-list')).body.places;
+    const a = list.find((p) => p.name === '별점한식A');
+    const b = list.find((p) => p.name === '별점한식B');
+
+    // 로그인 필요, 1~5만, 없는 가게는 안 됨
+    let r = await t.call('POST', '/api/reviews', { placeId: a.id, rating: 3 });
+    assert.equal(r.status, 401);
+    r = await t.call('POST', '/api/reviews', { voterId: V1, placeId: a.id, rating: 6 });
+    assert.equal(r.status, 400);
+    r = await t.call('POST', '/api/reviews', { voterId: V1, placeId: 'nope', rating: 3 });
+    assert.equal(r.status, 404);
+
+    // 한 사람당 하나: 다시 남기면 고쳐진다
+    await t.call('POST', '/api/reviews', { voterId: V1, placeId: a.id, rating: 4, comment: '  맛있어요  ' });
+    r = await t.call('POST', '/api/reviews', { voterId: V1, placeId: a.id, rating: 1, comment: '별로였어요' });
+    assert.deepEqual(r.body.ratings[a.id], { avg: 1, count: 1, mine: 1, excluded: false }, '후기 1개는 기본 기준(2개 이상) 미달이라 아직 제외 안 함');
+    r = await t.call('POST', '/api/reviews', { voterId: V2, placeId: a.id, rating: 2 });
+    assert.deepEqual(r.body.ratings[a.id], { avg: 1.5, count: 2, mine: 2, excluded: true });
+    await t.call('POST', '/api/reviews', { voterId: V3, placeId: b.id, rating: 5, comment: '최고' });
+
+    // 후기 목록과 화면 상태
+    const reviews = await t.call('GET', `/api/reviews/${a.id}`, null, { 'x-session': t.sessions[V1] });
+    assert.equal(reviews.body.reviews.length, 2);
+    assert.deepEqual(reviews.body.reviews.find((x) => x.mine), { name: '테스터1', rating: 1, comment: '별로였어요', at: reviews.body.reviews.find((x) => x.mine).at, mine: true });
+    const st = await t.call('GET', '/api/state', null, { 'x-session': t.sessions[V3] });
+    assert.equal(st.body.ratings[b.id].mine, 5);
+    assert.equal(st.body.ratings[a.id].mine, 0);
+    assert.deepEqual(st.body.ratingFilter, { minRating: 2.5, minReviews: 2 });
+
+    // 자동 후보: 평균 1.5인 A는 빠지고 한식은 B만 나온다
+    for (let i = 0; i < 4; i++) {
+      const { round } = (await t.call('POST', '/api/rounds', {}, { 'x-admin-key': 'hs' })).body;
+      assert.equal(round.candidates.find((c) => c.categoryKey === 'korean').name, '별점한식B');
+    }
+    // 직접 고르기는 제외하지 않는다
+    r = await t.call('POST', '/api/rounds', { manual: [{ id: a.id }] }, { 'x-admin-key': 'hs' });
+    assert.equal(r.body.round.candidates[0].name, '별점한식A');
+
+    // 기준 변경은 관리자만, 끄면 다시 후보에 나온다
+    r = await t.call('POST', '/api/settings/rating', { voterId: V1, minRating: 0, minReviews: 2 });
+    assert.equal(r.status, 403);
+    r = await t.call('POST', '/api/settings/rating', { minRating: 1.7, minReviews: 2 }, { 'x-admin-key': 'hs' });
+    assert.equal(r.status, 400);
+    r = await t.call('POST', '/api/settings/rating', { minRating: 0, minReviews: 2 }, { 'x-admin-key': 'hs' });
+    assert.equal(r.body.ratings[a.id].excluded, false);
+    const seen = new Set();
+    for (let i = 0; i < 6; i++) {
+      const { round } = (await t.call('POST', '/api/rounds', {}, { 'x-admin-key': 'hs' })).body;
+      seen.add(round.candidates.find((c) => c.categoryKey === 'korean').name);
+    }
+    assert.ok(seen.has('별점한식A'));
+
+    // 통계: 높은 순, 낮은 가게, 최근 후기
+    await t.call('POST', '/api/settings/rating', { minRating: 2.5, minReviews: 2 }, { 'x-admin-key': 'hs' });
+    const stats = (await t.call('GET', '/api/stats')).body.ratings;
+    assert.deepEqual(stats.summary, { reviews: 3, places: 2, avg: 2.7, periodReviews: 3, reviewers: 3 });
+    assert.deepEqual(stats.top.map((p) => p.name), ['별점한식B', '별점한식A']);
+    assert.deepEqual(stats.low.map((p) => [p.name, p.excluded]), [['별점한식A', true]]);
+    assert.equal(stats.recent[0].place, '별점한식B');
+    assert.equal(stats.recent[0].comment, '최고');
+
+    // 내 별점 지우기
+    r = await t.call('DELETE', `/api/reviews/${b.id}`, { voterId: V3 });
+    assert.equal(r.body.ratings[b.id], undefined);
+  } finally {
+    t.close();
+  }
+});

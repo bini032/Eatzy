@@ -562,6 +562,7 @@
           <a class="btn primary" href="${esc(naverMapUrl(w))}" target="_blank" rel="noopener">${esc(t('decision.go'))}</a>
           ${infoLink(w, 'btn')}
         </p>
+        <p class="review-line">${reviewRow(w)}</p>
         ${orderBlock(round, w)}
         <p class="muted small-text">${esc(t('decision.time', { time: formatTime(round.finishedAt) }))}</p>`;
     });
@@ -632,6 +633,7 @@
               <span class="badge cat">${esc(catName(c.categoryLabel))}</span>
               ${c.pinned ? `<span class="badge pin">${esc(t('card.pinned'))}</span>` : ''}
               ${leader ? `<span class="badge lead">${esc(done ? t('card.final') : t('card.leading'))}</span>` : ''}
+              ${ratingBadge(c.id)}
             </div>
             <h3><button type="button" class="name-btn" data-pop="${esc(c.id)}" title="${esc(t('pop.open'))}">${esc(c.name)} <span class="info-i" aria-hidden="true">ⓘ</span></button></h3>
             ${c.memo ? `<div class="meta">${esc(c.memo)}</div>` : ''}
@@ -678,7 +680,10 @@
     const items = data.history || [];
     $('historySection').hidden = items.length === 0;
     $('history').innerHTML = items
-      .map((h) => `<li><span>${esc(catName(h.winner.categoryLabel))} · <strong>${esc(h.winner.name)}</strong></span><span class="muted">${formatTime(h.decidedAt)}</span></li>`)
+      .map(
+        (h) => `<li><span>${esc(catName(h.winner.categoryLabel))} · <strong>${esc(h.winner.name)}</strong> ${ratingBadge(h.winner.id)}</span>
+          <span class="history-right"><span class="muted">${formatTime(h.decidedAt)}</span>${reviewButton(h.winner, true)}</span></li>`
+      )
       .join('');
   }
 
@@ -688,6 +693,7 @@
     renderDecision();
     renderRound();
     renderHistory();
+    renderRatingForm();
     renderUser();
     const round = data.round;
     $('findBtn').textContent = round && round.status === 'voting' ? t('find.again') : t('find.new');
@@ -1013,7 +1019,7 @@
       ? shown
           .map(
             (p) => `<li><button type="button" class="${selectedIds.has(p.id) ? 'on' : ''}" data-manual-id="${esc(p.id)}" aria-pressed="${selectedIds.has(p.id)}">
-              <span><strong>${esc(p.name)}</strong> <small>${esc(catName(p.category))}${p.address ? ` · ${esc(p.address)}` : ''}</small></span>
+              <span><strong>${esc(p.name)}</strong> ${p.rating ? `<span class="star-text">★ ${p.rating.avg.toFixed(1)}</span>` : ''} <small>${esc(catName(p.category))}${p.address ? ` · ${esc(p.address)}` : ''}</small></span>
               <span class="check-mark">${selectedIds.has(p.id) ? '✓' : '+'}</span></button></li>`
           )
           .join('') + (matches.length > shown.length ? `<li class="muted small-text">${esc(t('manual.more', { n: matches.length - shown.length }))}</li>` : '')
@@ -1244,6 +1250,162 @@
     }
   });
 
+  // ---------- 후기·별점 ----------
+  // 별점은 계정당 가게마다 하나(언제든 고침). 평균이 기준보다 낮은 가게는 자동 후보에서 빠진다(관리자 설정)
+  const ratingOf = (id) => (data && data.ratings && data.ratings[id]) || null;
+  const starText = (n) => '★'.repeat(n) + '☆'.repeat(5 - n);
+
+  function ratingBadge(id) {
+    const r = ratingOf(id);
+    if (!r) return '';
+    const title = r.excluded ? t('rating.excluded') : t('rating.title', { avg: r.avg.toFixed(1), n: r.count });
+    return `<span class="badge star${r.excluded ? ' low' : ''}" title="${esc(title)}">★ ${r.avg.toFixed(1)} (${r.count})${r.excluded ? ` · ${esc(t('rating.excludedShort'))}` : ''}</span>`;
+  }
+  function reviewButton(place, compact) {
+    const r = ratingOf(place.id);
+    const label = r && r.mine ? (compact ? starText(r.mine) : t('review.mine', { stars: starText(r.mine) })) : compact ? t('review.short') : t('review.btn');
+    return `<button class="small${compact ? ' ghost review-mini' : ''}" type="button" data-review="${esc(place.id)}" data-review-name="${esc(place.name)}">${esc(label)}</button>`;
+  }
+  function reviewRow(place) {
+    const r = ratingOf(place.id);
+    return `<span class="muted">${esc(r ? t('rating.summary', { avg: r.avg.toFixed(1), n: r.count }) : t('rating.none'))}</span> ${reviewButton(place, false)}`;
+  }
+  function reviewItem(r, withPlace) {
+    return `<li>
+      <div class="review-head">
+        <strong>${esc(withPlace ? r.place : r.name)}</strong>
+        <span class="stars" aria-label="${esc(t('review.starN', { n: r.rating }))}">${starText(r.rating)}</span>
+        <span class="muted">${esc((withPlace ? `${r.name} · ` : '') + formatTime(r.at))}</span>
+      </div>
+      ${r.comment ? `<p>${esc(r.comment)}</p>` : ''}
+    </li>`;
+  }
+
+  let reviewTarget = null; // { id, name }
+  let reviewPick = 0;
+  function renderReviewStars() {
+    $('reviewStars').innerHTML =
+      [1, 2, 3, 4, 5]
+        .map(
+          (n) =>
+            `<button type="button" role="radio" aria-checked="${n === reviewPick}" class="star-btn${n <= reviewPick ? ' on' : ''}" data-star="${n}" aria-label="${esc(t('review.starN', { n }))}">★</button>`
+        )
+        .join('') + `<span class="star-label">${reviewPick ? esc(t(`review.label${reviewPick}`)) : ''}</span>`;
+  }
+  async function openReview(id, name) {
+    if (!session) return openUserDialog(false, t('review.loginFirst'));
+    reviewTarget = { id, name };
+    const r = ratingOf(id);
+    reviewPick = (r && r.mine) || 0;
+    $('reviewTitle').textContent = t('review.title', { name });
+    $('reviewComment').value = '';
+    $('reviewError').hidden = true;
+    $('reviewDelete').hidden = !reviewPick;
+    renderReviewStars();
+    $('reviewList').innerHTML = '';
+    if (!$('reviewDialog').open) $('reviewDialog').showModal();
+    try {
+      const res = await api(`/api/reviews/${encodeURIComponent(id)}`);
+      if (!reviewTarget || reviewTarget.id !== id) return;
+      const mine = res.reviews.find((x) => x.mine);
+      if (mine && !$('reviewComment').value) $('reviewComment').value = mine.comment;
+      $('reviewList').innerHTML = res.reviews.length ? res.reviews.map((x) => reviewItem(x)).join('') : `<li class="muted small-text">${esc(t('review.none'))}</li>`;
+    } catch (err) {
+      $('reviewList').innerHTML = `<li class="error">${esc(err.message)}</li>`;
+    }
+  }
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-review]');
+    if (btn) openReview(btn.dataset.review, btn.dataset.reviewName);
+  });
+  $('reviewStars').addEventListener('click', (e) => {
+    const star = e.target.closest('[data-star]');
+    if (!star) return;
+    reviewPick = Number(star.dataset.star);
+    $('reviewError').hidden = true;
+    renderReviewStars();
+  });
+  $('reviewCancel').addEventListener('click', () => $('reviewDialog').close());
+
+  async function afterReview(res, msgKey) {
+    data.ratings = res.ratings;
+    $('reviewDialog').close();
+    showMessage(t(msgKey));
+    render();
+    loadStats();
+  }
+  function reviewFail(err) {
+    if (err.code === 'no_user') {
+      $('reviewDialog').close();
+      return sessionExpired();
+    }
+    if (err.code === 'enter_group') {
+      $('reviewDialog').close();
+      return showEnterGroup();
+    }
+    $('reviewError').textContent = err.message;
+    $('reviewError').hidden = false;
+  }
+  $('reviewForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!reviewPick) {
+      $('reviewError').textContent = t('review.pick');
+      $('reviewError').hidden = false;
+      return;
+    }
+    $('reviewOk').disabled = true;
+    try {
+      const body = { placeId: reviewTarget.id, rating: reviewPick, comment: $('reviewComment').value };
+      await afterReview(await api('/api/reviews', { method: 'POST', body }), 'review.saved');
+    } catch (err) {
+      reviewFail(err);
+    } finally {
+      $('reviewOk').disabled = false;
+    }
+  });
+  $('reviewDelete').addEventListener('click', async () => {
+    try {
+      await afterReview(await api(`/api/reviews/${encodeURIComponent(reviewTarget.id)}`, { method: 'DELETE' }), 'review.deleted');
+    } catch (err) {
+      reviewFail(err);
+    }
+  });
+
+  // 관리자: 별점 낮은 가게 제외 기준
+  function renderRatingForm() {
+    const form = $('ratingForm');
+    if (!isAdmin() || !data.ratingOptions || form.dataset.dirty || form.contains(document.activeElement)) return;
+    const f = data.ratingFilter;
+    $('ratingMin').innerHTML = data.ratingOptions.minRating
+      .map((v) => `<option value="${v}">${esc(v ? t('admin.ratingBelow', { v: v.toFixed(1) }) : t('admin.ratingOff'))}</option>`)
+      .join('');
+    $('ratingReviews').innerHTML = data.ratingOptions.minReviews.map((n) => `<option value="${n}">${esc(t('admin.ratingReviews', { n }))}</option>`).join('');
+    $('ratingMin').value = String(f.minRating);
+    $('ratingReviews').value = String(f.minReviews);
+    $('ratingReviews').disabled = !f.minRating;
+  }
+  $('ratingForm').addEventListener('change', () => {
+    $('ratingForm').dataset.dirty = '1';
+    $('ratingReviews').disabled = $('ratingMin').value === '0';
+  });
+  $('ratingForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const res = await api('/api/settings/rating', {
+        method: 'POST',
+        body: { minRating: Number($('ratingMin').value), minReviews: Number($('ratingReviews').value) },
+      });
+      delete $('ratingForm').dataset.dirty;
+      data.ratingFilter = res.ratingFilter;
+      data.ratings = res.ratings;
+      showMessage(t('admin.ratingSaved'));
+      render();
+      loadStats();
+    } catch (err) {
+      showMessage(err.message, true);
+    }
+  });
+
   // ---------- 통계 ----------
   let statsMonth = '';
   let statsKey = null; // 마지막 결정 기록이 바뀌면 통계를 다시 불러온다
@@ -1302,6 +1464,23 @@
     rankList($('statsMenus'), st.menus.map((m) => ({ name: m.name, count: m.count, sub: m.restaurant })), 'stats.orders');
     rankList($('statsCategories'), st.categories.map((c) => ({ name: catName(c.label), count: c.count })), 'stats.times');
     rankList($('statsVotes'), st.popularCandidates.map((r) => ({ name: r.name, count: r.count, sub: catName(r.category) })), 'stats.votesUnit');
+    renderRatingStats(st.ratings);
+  }
+
+  // 별점 통계: 가게 순위는 전체 기간 평균, 최근 후기는 고른 기간
+  function renderRatingStats(rt) {
+    if (!rt) return;
+    const ratingRow = (p, sub) => ({ name: p.name, count: p.avg, sub, value: t('stats.ratingValue', { avg: p.avg.toFixed(1), n: p.count }) });
+    $('statsRatingSummary').textContent = rt.summary.reviews
+      ? t('stats.ratingSummary', { avg: rt.summary.avg.toFixed(1), n: rt.summary.reviews, places: rt.summary.places })
+      : t('stats.ratingTopDesc');
+    rankList($('statsRatingTop'), rt.top.map((p) => ratingRow(p, catName(p.category))), 'stats.times');
+    $('statsRatingRule').textContent =
+      rt.filter.minRating > 0 ? t('stats.ratingRule', { min: rt.filter.minRating.toFixed(1), n: rt.filter.minReviews }) : t('stats.ratingRuleOff');
+    rankList($('statsRatingLow'), rt.low.map((p) => ratingRow(p, p.excluded ? t('rating.excludedShort') : catName(p.category))), 'stats.times');
+    $('statsReviews').innerHTML = rt.recent.length
+      ? rt.recent.map((r) => reviewItem(r, true)).join('')
+      : `<li class="rank-empty">${esc(t('stats.empty'))}</li>`;
   }
 
   async function loadStats() {
@@ -1516,7 +1695,7 @@
   }
   refresh();
   setInterval(() => {
-    const dialogOpen = ['userDialog', 'menuDialog', 'noticeDialog', 'placeDialog', 'enterDialog'].some((id) => $(id).open);
+    const dialogOpen = ['userDialog', 'menuDialog', 'noticeDialog', 'placeDialog', 'enterDialog', 'reviewDialog'].some((id) => $(id).open);
     if (!busy && !noGroup && !document.hidden && !dialogOpen) refresh();
   }, POLL_MS);
   document.addEventListener('visibilitychange', () => {

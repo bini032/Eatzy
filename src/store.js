@@ -15,6 +15,7 @@ function defaultState() {
     menus: {}, // 관리자가 앱에서 입력한 가게별 메뉴 { [가게id]: ["메뉴", ...] }
     history: [],
     recent: {},
+    reviews: {}, // 후기·별점 { [가게id]: { name, category, items: { [사용자id]: { name, rating, comment, at } } } } (src/reviews.js)
   };
 }
 

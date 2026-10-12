@@ -16,6 +16,8 @@
   --success: 142 71% 35%;
   --success-soft: 141 79% 96%;
   --brand: 24 95% 53%;
+  --star: 43 96% 50%;
+  --star-strong: 32 95% 38%;
   --radius: 0.5rem;
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
 }
@@ -36,6 +38,8 @@
   --ring: 240 4.9% 83.9%;
   --success: 142 69% 58%;
   --success-soft: 144 61% 9%;
+  --star: 45 93% 55%;
+  --star-strong: 45 93% 62%;
   --shadow-sm: none;
 }
 
@@ -504,3 +508,41 @@ dialog h3 { font-size: 18px; }
   .radius { flex-basis: auto; }
   .admin-form { grid-template-columns: 1fr; }
 }
+
+/* ---------- 후기·별점 ---------- */
+.badge.star { background: hsl(var(--star) / 0.14); border-color: transparent; color: hsl(var(--star-strong)); }
+.badge.star.low { background: hsl(var(--destructive) / 0.1); color: hsl(var(--destructive)); }
+.star-text { font-size: 12px; font-weight: 600; color: hsl(var(--star-strong)); }
+.review-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.history li { align-items: center; }
+.history-right { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.review-mini { height: 28px; padding: 0 8px; font-size: 12px; color: hsl(var(--star-strong)); white-space: nowrap; }
+.stars-input { display: flex; align-items: center; gap: 2px; margin: 12px 0; }
+.star-btn {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  font-size: 30px;
+  line-height: 1;
+  color: hsl(var(--border));
+  cursor: pointer;
+}
+.star-btn.on { color: hsl(var(--star)); }
+.star-btn:hover { background: transparent; transform: scale(1.08); }
+.star-label { margin-left: 8px; font-size: 14px; font-weight: 600; color: hsl(var(--muted-foreground)); }
+#reviewComment { width: 100%; }
+.review-others-title { margin: 18px 0 6px; font-size: 14px; }
+.review-list { list-style: none; padding: 0; margin: 0; max-height: 260px; overflow-y: auto; }
+.stats .review-list { max-height: none; }
+.review-list li { padding: 8px 0; border-bottom: 1px solid hsl(var(--border)); font-size: 13px; }
+.review-list li:last-child { border-bottom: 0; }
+.review-list p { margin: 4px 0 0; }
+.review-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.review-head .stars { color: hsl(var(--star)); letter-spacing: 1px; }
+.review-head .muted { font-size: 12px; margin-left: auto; }
+.rating-form { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid hsl(var(--border)); }
+.rating-form-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.rating-form-row select { width: auto; flex: 1 1 140px; }
