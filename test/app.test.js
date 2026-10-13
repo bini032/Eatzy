@@ -23,7 +23,7 @@ function fakePlaces(label, n) {
 }
 
 const realFetch = global.fetch;
-function installFakeKakao({ counts = { 한식: 3, 중식: 2, 양식: 2, 분식: 2 } } = {}) {
+function installFakeKakao({ counts = { 한식: 3, 중식: 2, 양식: 2, 분식: 2 }, kakaoError = false } = {}) {
   const calls = [];
   global.fetch = async (url, opts) => {
     const u = new URL(url);
@@ -43,6 +43,9 @@ function installFakeKakao({ counts = { 한식: 3, 중식: 2, 양식: 2, 분식: 
     }
     if (u.hostname !== 'dapi.kakao.com') return realFetch(url, opts);
     calls.push(u);
+    if (kakaoError) {
+      return new Response(JSON.stringify({ errorType: 'NotAuthorizedError', message: 'App(1) disabled OPEN_MAP_AND_LOCAL service.' }), { status: 403 });
+    }
     const query = u.searchParams.get('query');
     let documents = [];
     if (u.pathname.endsWith('coord2address.json')) {
@@ -1237,6 +1240,31 @@ test('좌표 자동 채우기: 관리자가 주소로 좌표를 찾고, 다른 �
     const again = (await t.call('GET', '/api/admin/places', null, { 'x-admin-key': 'hs' })).body.places.find((p) => p.name === '좌표한식');
     assert.equal(again.x, 126.9826);
     assert.deepEqual(again.menus, ['비빔밥']);
+  } finally {
+    t.close();
+  }
+});
+
+test('카카오 오류: 오류 내용과 해결 방법을 알려 주고, 가게 목록으로 뽑기와 장소 검색은 계속 된다', async () => {
+  const t = await setup({ places: MENU_LIST, kakaoError: true });
+  try {
+    const check = await t.call('GET', '/api/admin/kakao-check', null, { 'x-admin-key': 'hs' });
+    assert.equal(check.body.ok, false);
+    assert.match(check.body.error, /HTTP 403/);
+    assert.match(check.body.error, /OPEN_MAP_AND_LOCAL/);
+    assert.match(check.body.error, /카카오맵/);
+    assert.equal((await t.call('GET', '/api/admin/kakao-check')).status, 403, '관리자만');
+
+    // 등록된 가게 목록으로 뽑기는 기본 위치를 못 찾아도 된다
+    const r = await t.call('POST', '/api/rounds', {});
+    assert.equal(r.status, 201);
+    assert.equal(r.body.round.candidates.length, 4);
+
+    // 장소 검색은 OpenStreetMap으로 대신 찾는다
+    const found = await t.call('GET', '/api/places?q=테스트역');
+    assert.equal(found.status, 200);
+    assert.equal(found.body.places[0].name, '테스트역');
+    assert.match(found.body.attribution, /OpenStreetMap/);
   } finally {
     t.close();
   }

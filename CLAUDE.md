@@ -46,6 +46,7 @@ README의 "다른 사람들에게 링크로 공유하기"를 따른다.
 - 후기·별점은 그룹 상태의 `reviews`(`{ [가게id]: { name, category, items: { [사용자id]: { name, rating, comment, at } } } }`)에 저장한다(`src/reviews.js`). 제외 기준은 `settings.ratingFilter`(기본 평균 2.5 미만 + 후기 2개 이상)이고, `pickCandidates`의 `exclude`로 자동 후보에서만 뺀다(직접 고르기는 허용).
 - 기준 위치의 지도 지정은 `public/vendor/leaflet`(Leaflet 1.9.4, 화면에서 필요할 때만 불러옴) + OpenStreetMap 타일이다. 장소 검색 `/api/places`와 좌표→이름 변환은 `src/geocode.js`(카카오 키가 있으면 카카오, 없으면 Nominatim, 호출 간격 `NOMINATIM_GAP_MS` 기본 1.1초)를 쓴다.
 - 좌표 자동 채우기는 `/api/admin/geocode`(POST 시작, GET 진행 상황)이고 서버 메모리의 그룹별 작업으로 백그라운드 실행한다(`runGeocode`, `geocodeAddress`). 결과는 가게의 `x`/`y`/`coordSource`(`osm` 건물, `osm-street` 길 위치)로 저장하고, 가게 목록 병합 업로드 때 좌표 없는 항목은 기존 좌표를 유지한다. `NOMINATIM_URL`로 다른 Nominatim 서버를 쓸 수 있다.
+- 카카오 호출 오류는 카카오가 준 오류 내용과 해결 힌트를 담아 `kakao_error`로 돌려주고 서버 로그에 남긴다(`src/kakao.js`). 장소 검색은 카카오가 실패하면 Nominatim으로, 가게 목록 모드의 기본 위치는 못 찾으면 위치 없이 진행한다. 관리자는 `/api/admin/kakao-check`로 키를 점검한다.
 - 관리자: `SB` 계정(일반 계정처럼 처음 입력한 비밀번호로 생성, 모든 그룹 관리자 + 전체 현황 `/api/admin/overview`), 그룹을 만든 계정(`meta.ownerId`), 또는 `x-admin-key`/`key`로 보낸 `ADMIN_KEY`(업로드 스크립트용).
 - 저장 문서의 `authVersion`이 바뀌면(`src/store.js`) 예전 계정·세션·그룹 관리자 정보를 지운다.
 - 화면 문구는 `public/i18n.js`(ko/en/ja/zh), 서버 안내 메시지는 `src/i18n.js`(한국어 문장이 키, `x-lang` 헤더로 선택)에 있다. 문구를 추가하면 네 언어를 모두 채운다.

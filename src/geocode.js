@@ -66,8 +66,13 @@ async function reverseGeocode(x, y) {
 // 장소 검색(지도에서 위치 지정용): 카카오 키가 있으면 카카오, 없으면 OpenStreetMap. -> { places: [{ id, name, address, x, y }], attribution }
 async function searchPlaces(query) {
   if (process.env.KAKAO_REST_API_KEY) {
-    const { places } = await kakao.keywordSearch({ query, size: 10 });
-    return { places: places.map(({ id, name, address, x, y }) => ({ id, name, address, x, y })), attribution: '' };
+    try {
+      const { places } = await kakao.keywordSearch({ query, size: 10 });
+      return { places: places.map(({ id, name, address, x, y }) => ({ id, name, address, x, y })), attribution: '' };
+    } catch (err) {
+      // 카카오가 안 되면 OpenStreetMap으로 대신 찾는다 (오류 내용은 서버 로그에 남는다)
+      console.warn('카카오 장소 검색 실패, OpenStreetMap으로 대신 검색:', err.message);
+    }
   }
   const url = new URL(`${NOMINATIM}/search`);
   url.search = new URLSearchParams({ format: 'jsonv2', q: query, countrycodes: 'kr', limit: '8', addressdetails: '1', 'accept-language': 'ko' });

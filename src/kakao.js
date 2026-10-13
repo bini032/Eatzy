@@ -24,9 +24,26 @@ async function call(endpoint, params) {
     throw new AppError(502, '카카오 API에 연결하지 못했습니다: {error}', undefined, { error: err.message });
   }
   if (!res.ok) {
-    throw new AppError(502, '카카오 API 오류 (HTTP {status})', undefined, { status: res.status });
+    // 카카오가 준 오류 내용(예: "App(...) disabled OPEN_MAP_AND_LOCAL service.")을 로그와 안내에 함께 보여 준다
+    const text = await res.text().catch(() => '');
+    let detail = text.slice(0, 200);
+    try {
+      const body = JSON.parse(text);
+      detail = [body.errorType, body.message || body.msg].filter(Boolean).join(': ') || detail;
+    } catch {}
+    console.warn(`카카오 API 오류 ${res.status} (${endpoint}): ${detail}`);
+    throw new AppError(502, '카카오 API 오류 (HTTP {status}): {detail} {hint}', 'kakao_error', { status: res.status, detail, hint: kakaoHint(res.status, detail) });
   }
   return res.json();
+}
+
+// 자주 나는 오류의 해결 방법
+function kakaoHint(status, detail) {
+  if (status === 401) return '→ KAKAO_REST_API_KEY가 "REST API 키"인지 확인해 주세요 (어드민 키·JavaScript 키 아님).';
+  if (status === 403 && /OPEN_MAP_AND_LOCAL|disabled/i.test(detail)) return '→ 카카오 개발자 콘솔의 [제품 설정 > 카카오맵]에서 사용 설정을 켜 주세요.';
+  if (status === 403) return '→ 카카오 개발자 콘솔에서 카카오맵(로컬) API 사용 권한을 확인해 주세요.';
+  if (status === 429) return '→ 카카오 API 호출 한도를 넘었습니다. 잠시 후 다시 시도해 주세요.';
+  return '';
 }
 
 function toPlace(doc) {

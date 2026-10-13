@@ -140,6 +140,11 @@ const MESSAGES = {
   '지원하지 않는 별점 기준입니다.': { en: 'Unsupported rating threshold.', ja: '対応していない評価基準です。', zh: '不支持的评分标准。' },
   '결정 기록을 찾을 수 없습니다.': { en: 'Decision record not found.', ja: '決定の記録が見つかりません。', zh: '找不到该决定记录。' },
   '장소 검색에 실패했습니다. 잠시 후 다시 시도해 주세요.': { en: 'Place search failed. Please try again shortly.', ja: '場所の検索に失敗しました。しばらくしてからもう一度お試しください。', zh: '地点搜索失败，请稍后再试。' },
+  '카카오 API 오류 (HTTP {status}): {detail} {hint}': {
+    en: 'Kakao API error (HTTP {status}): {detail} {hint}',
+    ja: 'Kakao API エラー（HTTP {status}）：{detail} {hint}',
+    zh: 'Kakao API 错误（HTTP {status}）：{detail} {hint}',
+  },
   '관리자 권한이 필요합니다.': { en: 'Admin permission is required.', ja: '管理者権限が必要です。', zh: '需要管理员权限。' },
   '전체 관리자(SB)만 볼 수 있습니다.': { en: 'Only the super admin (SB) can view this.', ja: '全体管理者（SB）のみ閲覧できます。', zh: '仅超级管理员（SB）可以查看。' },
   '확인할 수 없는 링크입니다.': { en: 'This link cannot be checked.', ja: '確認できないリンクです。', zh: '无法检查该链接。' },

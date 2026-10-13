@@ -281,8 +281,17 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
   }
 
   // 기준 위치. 카카오 키도 고정 좌표도 없으면 null (등록 목록 모드에서 거리 계산 생략)
-  async function resolveOrigin() {
+  // optional: 카카오로 기본 위치를 못 찾아도 null로 넘어간다 (등록된 가게 목록으로 뽑을 때는 위치가 없어도 되므로)
+  async function resolveOrigin(optional = false) {
     if (state().settings.origin) return state().settings.origin;
+    if (optional && !defaultOrigin && kakaoEnabled()) {
+      try {
+        return await resolveOrigin(false);
+      } catch (err) {
+        console.warn('기본 위치를 찾지 못해 위치 없이 진행합니다:', err.message);
+        return null;
+      }
+    }
     let origin;
     if (defaultOrigin) {
       origin = { name: defaultPlaceQuery, x: defaultOrigin.x, y: defaultOrigin.y, source: 'default' };
@@ -484,6 +493,18 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     res.json({ saved: places.length, total: s.places.length, errors, places: savedPlacesView() });
   });
 
+  // 카카오 키 점검 (관리자): 브라우저에서 /api/admin/kakao-check 를 열면 결과를 보여 준다 (로그인 쿠키로 인증)
+  app.get('/api/admin/kakao-check', async (req, res) => {
+    requireAdmin(req);
+    if (!kakaoEnabled()) return res.json({ ok: false, keySet: false, error: msg(req, '서버에 KAKAO_REST_API_KEY가 설정되지 않아 맛집을 검색할 수 없습니다.') });
+    try {
+      const { places } = await kakao.keywordSearch({ query: defaultPlaceQuery, size: 3 });
+      res.json({ ok: true, keySet: true, query: defaultPlaceQuery, results: places.map((p) => p.name) });
+    } catch (err) {
+      res.json({ ok: false, keySet: true, error: err instanceof AppError ? msg(req, err.message, err.params) : err.message });
+    }
+  });
+
   // ---------- 주소로 좌표 자동 채우기 (관리자) ----------
   // OpenStreetMap Nominatim은 초당 1건까지라 가게가 많으면 1분 가까이 걸린다. 백그라운드로 돌리고 화면은 진행 상황을 조회한다.
   const geocodeJobs = new Map(); // 그룹id -> { running, total, done, found, approx, failed: [이름], startedAt, finishedAt, error }
@@ -572,7 +593,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     if (!src.type) {
       throw new AppError(503, '가게 목록(restaurants.json)이 비어 있고 KAKAO_REST_API_KEY도 없어 후보를 뽑을 수 없습니다. README를 참고해 가게를 등록해 주세요.');
     }
-    const origin = await resolveOrigin();
+    const origin = await resolveOrigin(src.type === 'list');
     const radius = s.settings.radius;
     const poolFor = src.type === 'list' ? async (cat) => listPool(src.places, cat, origin, radius) : (cat) => kakaoPool(cat, origin, radius);
     // 별점 기준 미달 가게는 자동 후보에서 뺀다 (직접 고르기는 그대로 허용)
