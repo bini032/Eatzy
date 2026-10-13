@@ -52,6 +52,8 @@ function validatePlaces(list) {
       menus: cleanMenus(raw.menus || []),
       x: hasX ? x : null,
       y: hasY ? y : null,
+      // 좌표 출처: 'osm'(주소로 자동, 건물), 'osm-street'(주소로 자동, 길 위치), 그 외 빈 값(파일에 적힌 좌표 등)
+      coordSource: hasX ? String(raw.coordSource || '').slice(0, 20) : '',
     });
   });
   return { places, errors };

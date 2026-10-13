@@ -1,6 +1,6 @@
 const kakao = require('./kakao');
 
-const NOMINATIM = 'https://nominatim.openstreetmap.org';
+const NOMINATIM = process.env.NOMINATIM_URL || 'https://nominatim.openstreetmap.org'; // 직접 운영하는 Nominatim이 있으면 바꿔 쓸 수 있다
 const USER_AGENT = 'Eatzy-lunch-vote/1.0 (https://github.com/bini032/Eatzy)';
 
 // Nominatim 이용 정책(초당 1건 이하)을 지키도록 서버 전체에서 호출 간격을 둔다
@@ -86,4 +86,46 @@ async function searchPlaces(query) {
   };
 }
 
-module.exports = { reverseGeocode, searchPlaces };
+// 가게 주소 -> 검색용 도로명 주소. 괄호(건물명)와 건물번호 뒤의 층·호수는 뺀다.
+// 예) "서울 중구 을지로5길 26 지하2층 (미래에셋 센터원)" -> { query: "서울 중구 을지로5길 26", gu: "중구" }
+function cleanAddress(address) {
+  const words = String(address || '')
+    .replace(/\(.*?\)/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+  const out = [];
+  for (const w of words) {
+    // 건물번호(26, 52-5, 지하58)까지 넣고 끝낸다
+    const num = w.match(/^(?:지하)?(\d+(?:-\d+)?)$/);
+    if (num && out.length) {
+      out.push(num[1]);
+      break;
+    }
+    out.push(w);
+  }
+  const gu = out.find((w) => /^[가-힣]+[구군]$/.test(w)) || '';
+  return { query: out.join(' '), gu };
+}
+
+// 가게 주소 -> 좌표 (OpenStreetMap Nominatim). 못 찾거나 다른 구로 나오면 null.
+// 결과: { x, y, precise } — precise가 false면 건물이 아니라 길 위치(대략적인 좌표)
+async function geocodeAddress(address) {
+  const { query, gu } = cleanAddress(address);
+  if (!query) return null;
+  const url = new URL(`${NOMINATIM}/search`);
+  url.search = new URLSearchParams({ format: 'jsonv2', q: query, countrycodes: 'kr', limit: '3', addressdetails: '1', 'accept-language': 'ko' });
+  const docs = await nominatimFetch(url);
+  for (const d of Array.isArray(docs) ? docs : []) {
+    const a = d.address || {};
+    const district = a.borough || a.city_district || a.county || '';
+    // 엉뚱한 동네 결과는 버린다 (주소에 구가 있으면 같은 구여야 함)
+    if (gu && district && district !== gu) continue;
+    const x = Number(d.lon);
+    const y = Number(d.lat);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    return { x, y, precise: d.category !== 'highway' && d.class !== 'highway' };
+  }
+  return null;
+}
+
+module.exports = { reverseGeocode, searchPlaces, geocodeAddress, cleanAddress };

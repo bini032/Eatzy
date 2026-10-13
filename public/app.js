@@ -1681,6 +1681,9 @@
 
   function renderAdmin(places) {
     adminPlaces = places;
+    const withCoords = places.filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y)).length;
+    $('coordInfo').textContent = t('coord.info', { n: withCoords, total: places.length });
+    $('coordBtn').disabled = coordPolling || withCoords === places.length;
     $('adminDesc').innerHTML = esc(t('admin.desc', { n: '\u0000', cmd: '\u0001' }))
       .replace('\u0000', `<strong>${places.length}</strong>`)
       .replace('\u0001', '<code>npm run upload-places</code>');
@@ -1696,7 +1699,11 @@
                 <div class="info">
                   <strong>${esc(p.name)}</strong>
                   <small>${esc(
-                    [p.address, p.menus.length ? t('admin.menusInfo', { n: p.menus.length, list: p.menus.slice(0, 5).join(', ') + (p.menus.length > 5 ? '…' : '') }) : t('admin.noMenus')]
+                    [
+                      p.address,
+                      Number.isFinite(p.x) ? t(p.coordSource === 'osm-street' ? 'coord.rowApprox' : 'coord.row') : t('coord.rowNone'),
+                      p.menus.length ? t('admin.menusInfo', { n: p.menus.length, list: p.menus.slice(0, 5).join(', ') + (p.menus.length > 5 ? '…' : '') }) : t('admin.noMenus'),
+                    ]
                       .filter(Boolean)
                       .join(' · ')
                   )}</small>
@@ -1711,6 +1718,55 @@
       : `<p class="muted small-text">${esc(t('admin.empty'))}</p>`;
   }
 
+  // 주소로 좌표 자동 채우기: 서버가 백그라운드로 찾고, 화면은 2초마다 진행 상황을 본다
+  let coordPolling = false;
+  function renderCoordJob(job) {
+    const el = $('coordStatus');
+    if (!job.total && !job.running && !job.finishedAt) {
+      el.hidden = true;
+      return;
+    }
+    el.hidden = false;
+    el.className = 'small-text' + (job.error && !job.found ? ' error' : '');
+    if (job.running) {
+      el.textContent = t('coord.running', { done: job.done, total: job.total });
+      return;
+    }
+    let text = t('coord.done', { found: job.found, total: job.total });
+    if (job.approx) text += t('coord.approx', { n: job.approx });
+    if (job.failed.length) text += t('coord.failed', { n: job.failed.length, names: job.failed.join(', ') });
+    if (job.error && !job.found) text += t('coord.error', { error: job.error });
+    el.textContent = text;
+  }
+  async function pollCoordJob() {
+    if (coordPolling) return;
+    coordPolling = true;
+    $('coordBtn').disabled = true;
+    try {
+      for (;;) {
+        const job = await api('/api/admin/geocode');
+        renderCoordJob(job);
+        if (!job.running) break;
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+    } catch (err) {
+      adminFail(err);
+    } finally {
+      coordPolling = false;
+      await loadAdmin();
+      refresh();
+    }
+  }
+  $('coordBtn').addEventListener('click', async () => {
+    if (!confirm(t('coord.confirm'))) return;
+    try {
+      renderCoordJob(await api('/api/admin/geocode', { method: 'POST', body: {} }));
+      pollCoordJob();
+    } catch (err) {
+      adminFail(err);
+    }
+  });
+
   async function adminAfterChange(places, msg) {
     renderAdmin(places);
     adminShowError('');
@@ -1719,7 +1775,16 @@
   }
 
   $('adminDetails').addEventListener('toggle', () => {
-    if ($('adminDetails').open && isAdmin()) loadAdmin();
+    if ($('adminDetails').open && isAdmin()) {
+      loadAdmin();
+      // 다른 기기나 새로고침 전에 시작한 작업이 진행 중이면 이어서 보여 준다
+      api('/api/admin/geocode')
+        .then((job) => {
+          renderCoordJob(job);
+          if (job.running) pollCoordJob();
+        })
+        .catch(() => {});
+    }
   });
 
   $('adminAddForm').addEventListener('submit', async (e) => {

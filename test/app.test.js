@@ -1201,3 +1201,43 @@ test('지도에서 위치 지정: 카카오 키가 없으면 OpenStreetMap으로
     t.close();
   }
 });
+
+test('좌표 자동 채우기: 관리자가 주소로 좌표를 찾고, 다른 구로 나오거나 주소가 없으면 못 찾음으로 남긴다', async () => {
+  const places = [
+    { name: '좌표한식', category: '한식', address: '테스트시 테스트구 테스트로 1 지하2층 (테스트빌딩)' },
+    { name: '좌표중식', category: '중식', address: '테스트시 다른구 다른로 5' },
+    { name: '좌표양식', category: '양식' },
+    { name: '좌표분식', category: '분식', address: '테스트시 테스트구 테스트로 9', x: 127.1, y: 37.1 },
+  ];
+  const t = await setup({ noKakao: true, places });
+  try {
+    let r = await t.call('POST', '/api/admin/geocode', { voterId: V1 });
+    assert.equal(r.status, 403);
+    r = await t.call('POST', '/api/admin/geocode', {}, { 'x-admin-key': 'hs' });
+    assert.equal(r.status, 202);
+    assert.equal(r.body.total, 3, '이미 좌표가 있는 가게는 건너뛴다');
+    let job = r.body;
+    for (let i = 0; i < 50 && job.running; i++) {
+      await new Promise((res) => setTimeout(res, 20));
+      job = (await t.call('GET', '/api/admin/geocode', null, { 'x-admin-key': 'hs' })).body;
+    }
+    assert.equal(job.running, false);
+    assert.equal(job.found, 1);
+    assert.deepEqual(job.failed.sort(), ['좌표양식', '좌표중식']);
+    const q = t.calls.find((u) => u.pathname === '/search');
+    assert.equal(q.searchParams.get('q'), '테스트시 테스트구 테스트로 1', '층·건물명은 빼고 찾는다');
+
+    const list = (await t.call('GET', '/api/admin/places', null, { 'x-admin-key': 'hs' })).body.places;
+    const korean = list.find((p) => p.name === '좌표한식');
+    assert.deepEqual([korean.x, korean.y, korean.coordSource], [126.9826, 37.5661, 'osm']);
+    assert.equal(list.find((p) => p.name === '좌표분식').x, 127.1);
+
+    // 좌표 없는 파일을 다시 올려도 채워 둔 좌표는 유지된다
+    await t.call('POST', '/api/admin/places', { mode: 'merge', places: [{ name: '좌표한식', category: '한식', address: places[0].address, menus: ['비빔밥'] }] }, { 'x-admin-key': 'hs' });
+    const again = (await t.call('GET', '/api/admin/places', null, { 'x-admin-key': 'hs' })).body.places.find((p) => p.name === '좌표한식');
+    assert.equal(again.x, 126.9826);
+    assert.deepEqual(again.menus, ['비빔밥']);
+  } finally {
+    t.close();
+  }
+});

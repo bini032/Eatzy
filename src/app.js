@@ -7,7 +7,7 @@ const { AppError } = require('./errors');
 const kakao = require('./kakao');
 const { CATEGORIES, pickCandidates, kakaoPool, listPool, tally, readVote, randomItem, distanceMeters, hasCoords } = require('./lunch');
 const { loadPlaces, validatePlaces, cleanMenus } = require('./places');
-const { reverseGeocode, searchPlaces } = require('./geocode');
+const { reverseGeocode, searchPlaces, geocodeAddress, cleanAddress } = require('./geocode');
 const { buildStats, kstMonth } = require('./stats');
 const { estimateTotal } = require('./price');
 const { translate, pickLang } = require('./i18n');
@@ -469,8 +469,12 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
       throw new AppError(400, '저장할 가게가 없습니다.');
     }
     const s = state();
-    const byId = new Map(mode === 'replace' ? [] : basePlaces().map((p) => [p.id, p]));
+    const before = new Map(basePlaces().map((p) => [p.id, p]));
+    const byId = new Map(mode === 'replace' ? [] : before);
     for (const p of places) {
+      // 새로 올린 항목에 좌표가 없으면 앱에서 채워 둔 좌표를 유지한다 (파일을 다시 올려도 좌표가 지워지지 않게)
+      const old = before.get(p.id);
+      if (old && !hasCoords(p) && hasCoords(old)) Object.assign(p, { x: old.x, y: old.y, coordSource: old.coordSource || '' });
       byId.set(p.id, p);
       // 앱에서 따로 저장된 메뉴가 있으면 새로 올린 메뉴를 합친다
       if (s.menus[p.id] && p.menus.length) s.menus[p.id] = cleanMenus([...s.menus[p.id], ...p.menus]);
@@ -479,6 +483,62 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     store.save();
     res.json({ saved: places.length, total: s.places.length, errors, places: savedPlacesView() });
   });
+
+  // ---------- 주소로 좌표 자동 채우기 (관리자) ----------
+  // OpenStreetMap Nominatim은 초당 1건까지라 가게가 많으면 1분 가까이 걸린다. 백그라운드로 돌리고 화면은 진행 상황을 조회한다.
+  const geocodeJobs = new Map(); // 그룹id -> { running, total, done, found, approx, failed: [이름], startedAt, finishedAt, error }
+  const jobView = (id) => geocodeJobs.get(id) || { running: false, total: 0, done: 0, found: 0, approx: 0, failed: [] };
+
+  app.get('/api/admin/geocode', (req, res) => {
+    requireAdmin(req);
+    res.json(jobView(groupId()));
+  });
+
+  app.post('/api/admin/geocode', (req, res) => {
+    requireAdmin(req);
+    const gid = groupId();
+    if (jobView(gid).running) return res.json(jobView(gid));
+    const s = state();
+    // 파일 목록을 쓰고 있었다면 DB 목록으로 옮겨 좌표를 저장한다
+    if (!(s.places || []).length) s.places = basePlaces().map((p) => ({ ...p }));
+    const targets = s.places.filter((p) => !hasCoords(p));
+    const job = { running: true, total: targets.length, done: 0, found: 0, approx: 0, failed: [], startedAt: new Date().toISOString() };
+    geocodeJobs.set(gid, job);
+    runGeocode(job, targets.map((p) => ({ id: p.id, name: p.name, address: p.address }))).catch((err) => {
+      job.error = err.message;
+      job.running = false;
+    });
+    res.status(202).json(job);
+  });
+
+  async function runGeocode(job, targets) {
+    const cache = new Map(); // 같은 주소(같은 건물의 여러 가게)는 한 번만 찾는다
+    for (const t of targets) {
+      try {
+        const key = cleanAddress(t.address).query;
+        if (!key) throw new Error('no address');
+        if (!cache.has(key)) cache.set(key, await geocodeAddress(t.address));
+        const r = cache.get(key);
+        // 그사이 목록이 바뀌었을 수 있으니 현재 목록에서 다시 찾아 좌표가 비어 있을 때만 넣는다
+        const cur = (state().places || []).find((p) => p.id === t.id);
+        if (r && cur && !hasCoords(cur)) {
+          Object.assign(cur, { x: r.x, y: r.y, coordSource: r.precise ? 'osm' : 'osm-street' });
+          job.found++;
+          if (!r.precise) job.approx++;
+        } else if (!r) {
+          job.failed.push(t.name);
+        }
+      } catch (err) {
+        job.failed.push(t.name);
+        if (err.message !== 'no address') job.error = err.message;
+      }
+      job.done++;
+      if (job.done % 10 === 0) store.save();
+    }
+    job.running = false;
+    job.finishedAt = new Date().toISOString();
+    store.save();
+  }
 
   app.delete('/api/admin/places/:id', (req, res) => {
     requireAdmin(req);

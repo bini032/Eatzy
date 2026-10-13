@@ -555,6 +555,8 @@ dialog h3 { font-size: 18px; }
 .review-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .review-head .stars { color: hsl(var(--star)); letter-spacing: 1px; }
 .review-head .muted { font-size: 12px; margin-left: auto; }
+.coord-block { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid hsl(var(--border)); }
+.coord-block #coordStatus { margin: 8px 0 0; }
 .rating-form { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid hsl(var(--border)); }
 .rating-form-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .rating-form-row select { width: auto; flex: 1 1 140px; }
