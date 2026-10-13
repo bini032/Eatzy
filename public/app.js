@@ -662,12 +662,16 @@
     if (!done && round.tiedIds.length > 1) {
       const names = round.tiedIds.map((id) => round.candidates.find((c) => c.id === id)?.name).filter(Boolean).join(', ');
       if (round.needsDraw) {
-        $('tieText').textContent = t('tie.need', { names });
-        $('drawBtn').hidden = false;
+        // 랜덤 뽑기 버튼은 관리자에게만 보이고, 팀원에게는 랜덤 뽑기로 1곳만 선택된다고 안내한다
+        $('tieText').textContent = t(isAdmin() ? 'tie.need' : 'tie.needMember', { names });
+        $('drawBtn').hidden = !isAdmin();
+        $('drawAdmin').hidden = true;
       } else {
         const winner = round.candidates.find((c) => c.id === round.leaderId);
-        $('tieText').textContent = t('tie.result', { names, name: winner ? winner.name : '' });
+        const count = (round.draw && round.draw.count) || 1;
+        $('tieText').textContent = t('tie.result', { names, name: winner ? winner.name : '' }) + (count > 1 ? t('tie.count', { n: count }) : '');
         $('drawBtn').hidden = true;
+        $('drawAdmin').hidden = !isAdmin();
       }
       tieBox.hidden = false;
     } else {
@@ -1328,6 +1332,22 @@
     withBusy(async () => {
       const res = await api(`/api/rounds/${data.round.id}/draw`, { method: 'POST', body: {} });
       applyRound(res.round);
+    })
+  );
+  // 관리자: 완료 전까지 다시 뽑기 / 뽑기 취소
+  $('drawAgainBtn').addEventListener('click', () =>
+    withBusy(async () => {
+      const res = await api(`/api/rounds/${data.round.id}/draw`, { method: 'POST', body: { redraw: true } });
+      applyRound(res.round);
+      const winner = res.round.candidates.find((c) => c.id === res.round.leaderId);
+      showMessage(t('tie.redrawn', { name: winner ? winner.name : '', n: (res.round.draw && res.round.draw.count) || 1 }));
+    })
+  );
+  $('drawCancelBtn').addEventListener('click', () =>
+    withBusy(async () => {
+      const res = await api(`/api/rounds/${data.round.id}/draw`, { method: 'DELETE' });
+      applyRound(res.round);
+      showMessage(t('tie.cancelled'));
     })
   );
 

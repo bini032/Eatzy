@@ -922,16 +922,30 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     res.json({ ok: true });
   });
 
-  // 동점일 때 랜덤 뽑기. 같은 동점 상황에서 여러 번 눌러도 결과는 한 번만 정해진다.
+  // 동점일 때 랜덤 뽑기 (관리자). 같은 동점에서 그냥 다시 눌러도 결과는 그대로이고,
+  // redraw로 완료 전까지 몇 번이든 다시 뽑을 수 있다 (count: 몇 번째 뽑기인지)
   app.post('/api/rounds/:id/draw', (req, res) => {
     const round = currentRound(req.params.id);
     if (round.status !== 'voting') throw closedError();
+    if (!isAdminReq(req)) throw new AppError(403, '랜덤 뽑기는 관리자만 할 수 있습니다.');
     const t = tally(round);
     if (t.tiedIds.length < 2) throw new AppError(409, '동점인 가게가 없어 랜덤 뽑기가 필요하지 않습니다.');
-    if (t.needsDraw) {
-      round.draw = { tiedIds: t.tiedIds, winnerId: randomItem(t.tiedIds), at: new Date().toISOString() };
+    const redraw = Boolean(req.body?.redraw) && !t.needsDraw;
+    if (t.needsDraw || redraw) {
+      const count = redraw ? (round.draw.count || 1) + 1 : 1;
+      round.draw = { tiedIds: t.tiedIds, winnerId: randomItem(t.tiedIds), at: new Date().toISOString(), count };
       store.save();
     }
+    res.json({ round: publicRound(round, req.user && req.user.id) });
+  });
+
+  // 뽑기 취소 (관리자): 동점 상태로 되돌린다
+  app.delete('/api/rounds/:id/draw', (req, res) => {
+    requireAdmin(req);
+    const round = currentRound(req.params.id);
+    if (round.status !== 'voting') throw closedError();
+    round.draw = null;
+    store.save();
     res.json({ round: publicRound(round, req.user && req.user.id) });
   });
 

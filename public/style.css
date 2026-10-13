@@ -291,6 +291,7 @@ span.chip { height: 28px; background: hsl(var(--secondary)); }
 
 .tie { margin-top: 16px; padding: 16px; border-radius: calc(var(--radius) + 4px); border: 1px dashed hsl(var(--brand)); text-align: center; }
 .tie p { margin: 0 0 12px; }
+.draw-admin { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 
 .complete-row { margin-top: 20px; display: flex; justify-content: flex-end; }
 

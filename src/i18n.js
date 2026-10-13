@@ -145,6 +145,7 @@ const MESSAGES = {
     ja: 'Kakao API エラー（HTTP {status}）：{detail} {hint}',
     zh: 'Kakao API 错误（HTTP {status}）：{detail} {hint}',
   },
+  '랜덤 뽑기는 관리자만 할 수 있습니다.': { en: 'Only an admin can run the random draw.', ja: 'ランダム抽選は管理者のみ可能です。', zh: '只有管理员可以随机抽签。' },
   '관리자 권한이 필요합니다.': { en: 'Admin permission is required.', ja: '管理者権限が必要です。', zh: '需要管理员权限。' },
   '전체 관리자(SB)만 볼 수 있습니다.': { en: 'Only the super admin (SB) can view this.', ja: '全体管理者（SB）のみ閲覧できます。', zh: '仅超级管理员（SB）可以查看。' },
   '확인할 수 없는 링크입니다.': { en: 'This link cannot be checked.', ja: '確認できないリンクです。', zh: '无法检查该链接。' },

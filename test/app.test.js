@@ -143,11 +143,26 @@ test('투표, 동점 랜덤 뽑기, 관리자 키로 완료', async () => {
     r = await t.call('POST', `/api/rounds/${round.id}/complete`, { key: 'hs' });
     assert.equal(r.status, 409, '동점이면 완료 불가');
 
-    r = await t.call('POST', `/api/rounds/${round.id}/draw`, {});
-    const drawn = r.body.round.leaderId;
+    r = await t.call('POST', `/api/rounds/${round.id}/draw`, { voterId: V1 });
+    assert.equal(r.status, 403, '랜덤 뽑기는 관리자만');
+    r = await t.call('POST', `/api/rounds/${round.id}/draw`, {}, { 'x-admin-key': 'hs' });
+    let drawn = r.body.round.leaderId;
     assert.ok([a.id, b.id].includes(drawn));
-    r = await t.call('POST', `/api/rounds/${round.id}/draw`, {});
-    assert.equal(r.body.round.leaderId, drawn, '다시 눌러도 결과 유지');
+    r = await t.call('POST', `/api/rounds/${round.id}/draw`, {}, { 'x-admin-key': 'hs' });
+    assert.equal(r.body.round.leaderId, drawn, '그냥 다시 눌러도 결과 유지');
+
+    // 관리자는 완료 전까지 다시 뽑거나 취소할 수 있다
+    r = await t.call('POST', `/api/rounds/${round.id}/draw`, { redraw: true }, { 'x-admin-key': 'hs' });
+    assert.equal(r.body.round.draw.count, 2);
+    drawn = r.body.round.leaderId;
+    assert.ok([a.id, b.id].includes(drawn));
+    r = await t.call('DELETE', `/api/rounds/${round.id}/draw`, { voterId: V1 });
+    assert.equal(r.status, 403);
+    r = await t.call('DELETE', `/api/rounds/${round.id}/draw`, null, { 'x-admin-key': 'hs' });
+    assert.equal(r.body.round.needsDraw, true, '취소하면 다시 동점');
+    r = await t.call('POST', `/api/rounds/${round.id}/draw`, {}, { 'x-admin-key': 'hs' });
+    drawn = r.body.round.leaderId;
+    assert.equal(r.body.round.draw.count, 1);
 
     r = await t.call('POST', `/api/rounds/${round.id}/complete`, { key: 'wrong' });
     assert.equal(r.status, 403);
@@ -174,7 +189,7 @@ test('투표 중 다시 뽑기는 관리자 키 필요, 투표가 바뀌면 동�
     const [a, b] = round.candidates;
     await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V1, candidateId: a.id });
     await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V2, candidateId: b.id });
-    await t.call('POST', `/api/rounds/${round.id}/draw`, {});
+    await t.call('POST', `/api/rounds/${round.id}/draw`, {}, { 'x-admin-key': 'hs' });
     let r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V3, candidateId: a.id });
     assert.equal(r.body.round.leaderId, a.id);
     r = await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V3, candidateId: null });
