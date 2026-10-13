@@ -7,7 +7,7 @@ const { AppError } = require('./errors');
 const kakao = require('./kakao');
 const { CATEGORIES, pickCandidates, kakaoPool, listPool, tally, readVote, randomItem, distanceMeters, hasCoords } = require('./lunch');
 const { loadPlaces, validatePlaces, cleanMenus } = require('./places');
-const { reverseGeocode } = require('./geocode');
+const { reverseGeocode, searchPlaces } = require('./geocode');
 const { buildStats, kstMonth } = require('./stats');
 const { estimateTotal } = require('./price');
 const { translate, pickLang } = require('./i18n');
@@ -419,7 +419,8 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     if (mode === 'default') {
       s.settings.origin = null;
       await resolveOrigin();
-    } else if (mode === 'current') {
+    } else if (mode === 'current' || mode === 'map') {
+      // 내 현재 위치 또는 지도에서 누른 지점: 좌표로 주변 이름과 주소를 찾아 둔다
       if (!validCoords(x, y)) throw new AppError(400, '좌표가 올바르지 않습니다.');
       const geo = await reverseGeocode(x, y);
       s.settings.origin = {
@@ -428,7 +429,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
         attribution: (geo && geo.attribution) || '',
         x,
         y,
-        source: 'current',
+        source: mode,
       };
     } else if (mode === 'place') {
       if (!validCoords(x, y) || !name) throw new AppError(400, '장소 정보가 올바르지 않습니다.');
@@ -443,8 +444,12 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
   app.get('/api/places', async (req, res) => {
     const q = String(req.query.q || '').trim();
     if (!q) throw new AppError(400, '검색어를 입력해 주세요.');
-    const { places } = await kakao.keywordSearch({ query: q.slice(0, 50), size: 10 });
-    res.json({ places });
+    try {
+      res.json(await searchPlaces(q.slice(0, 50)));
+    } catch (err) {
+      console.warn('장소 검색 실패:', err.message);
+      throw new AppError(502, '장소 검색에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+    }
   });
 
   // ---------- 가게 목록 관리 (관리자) ----------

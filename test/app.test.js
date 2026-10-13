@@ -27,6 +27,14 @@ function installFakeKakao({ counts = { 한식: 3, 중식: 2, 양식: 2, 분식: 
   const calls = [];
   global.fetch = async (url, opts) => {
     const u = new URL(url);
+    if (u.hostname === 'nominatim.openstreetmap.org' && u.pathname === '/search') {
+      calls.push(u);
+      return new Response(
+        JSON.stringify([
+          { osm_type: 'node', osm_id: 1, name: '테스트역', display_name: '테스트역, 테스트구', lat: '37.5661', lon: '126.9826', address: { city: '테스트시', borough: '테스트구', road: '테스트로' } },
+        ])
+      );
+    }
     if (u.hostname === 'nominatim.openstreetmap.org') {
       calls.push(u);
       return new Response(
@@ -50,6 +58,7 @@ function installFakeKakao({ counts = { 한식: 3, 중식: 2, 양식: 2, 분식: 
 }
 
 async function setup(opts = {}) {
+  process.env.NOMINATIM_GAP_MS = '0';
   process.env.KAKAO_REST_API_KEY = 'test';
   if (opts.noKakao) delete process.env.KAKAO_REST_API_KEY;
   const calls = installFakeKakao(opts);
@@ -1168,6 +1177,26 @@ test('결정 기록 지우기: 관리자만 지우고, 통계·지난번 결정 
 
     await t.call('DELETE', `/api/history/${first.round.id}`, null, { 'x-admin-key': 'hs' });
     assert.equal((await t.call('GET', '/api/state')).body.lastWinner, null);
+  } finally {
+    t.close();
+  }
+});
+
+test('지도에서 위치 지정: 카카오 키가 없으면 OpenStreetMap으로 장소를 찾고, 지도에서 누른 지점을 기준 위치로 정한다', async () => {
+  const t = await setup({ noKakao: true, places: MENU_LIST });
+  try {
+    const found = await t.call('GET', '/api/places?q=테스트역');
+    assert.equal(found.status, 200);
+    assert.deepEqual(found.body.places[0], { id: 'osm-node-1', name: '테스트역', address: '테스트시 테스트구 테스트로', x: 126.9826, y: 37.5661 });
+    assert.match(found.body.attribution, /OpenStreetMap/);
+    assert.ok(t.calls.some((u) => u.pathname === '/search' && u.searchParams.get('countrycodes') === 'kr'));
+
+    const r = await t.call('POST', '/api/location', { mode: 'map', x: 126.981, y: 37.565 });
+    assert.equal(r.body.settings.origin.source, 'map');
+    assert.equal(r.body.settings.origin.name, '테스트빌딩');
+    assert.equal(r.body.settings.origin.x, 126.981);
+    const bad = await t.call('POST', '/api/location', { mode: 'map', x: 999, y: 37.5 });
+    assert.equal(bad.status, 400);
   } finally {
     t.close();
   }

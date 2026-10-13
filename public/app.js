@@ -427,6 +427,7 @@
   function originLabel(o) {
     if (!o) return '';
     if (o.source === 'current') return o.name ? t('loc.mine', { name: o.name }) : t('loc.currentName');
+    if (o.source === 'map') return o.name ? t('loc.mapName', { name: o.name }) : t('loc.mapPicked');
     return o.name;
   }
 
@@ -467,8 +468,6 @@
       $('locAddr').textContent = t('loc.noneDesc');
     }
     $('locDefaultBtn').textContent = data.defaultLocatable ? t('loc.defaultBtn', { place: defaultPlace }) : t('loc.clearBtn');
-    $('locSearchToggle').hidden = !data.kakaoEnabled;
-    if (!data.kakaoEnabled) $('locSearchForm').hidden = $('locResults').hidden = true;
     $('sourceInfo').textContent =
       data.source === 'list'
         ? t(data.placesOrigin === 'db' ? 'source.saved' : 'source.file', { n: data.placesCount }) +
@@ -961,38 +960,128 @@
     })
   );
 
-  $('locSearchToggle').addEventListener('click', () => {
-    const form = $('locSearchForm');
-    form.hidden = !form.hidden;
-    $('locResults').hidden = true;
-    if (!form.hidden) $('locSearchInput').focus();
-  });
+  // ---------- 지도에서 위치 지정 (Leaflet + OpenStreetMap 지도, 키 불필요) ----------
+  // 장소를 검색해 고르거나, 지도를 누르거나 핀을 끌어서 기준 위치를 정한다
+  const MAP_START = [37.566, 126.9826]; // 처음 보여 줄 곳 (을지로입구역 부근). 기준 위치가 있으면 그곳
+  let leafletLoading = null;
+  function loadLeaflet() {
+    if (window.L) return Promise.resolve();
+    if (!leafletLoading) {
+      leafletLoading = new Promise((resolve, reject) => {
+        const css = document.createElement('link');
+        css.rel = 'stylesheet';
+        css.href = '/vendor/leaflet/leaflet.css';
+        document.head.appendChild(css);
+        const js = document.createElement('script');
+        js.src = '/vendor/leaflet/leaflet.js';
+        js.onload = resolve;
+        js.onerror = () => {
+          leafletLoading = null;
+          reject(new Error(t('map.loadFailed')));
+        };
+        document.head.appendChild(js);
+      });
+    }
+    return leafletLoading;
+  }
 
-  let searchResults = [];
-  $('locSearchForm').addEventListener('submit', (e) => {
+  let map = null;
+  let mapMarker = null;
+  let mapPick = null; // { mode: 'place' | 'map', x, y, name?, address? }
+  let mapResults = [];
+
+  function setMapPick(pick, pan) {
+    mapPick = pick;
+    const latlng = [pick.y, pick.x];
+    if (!mapMarker) {
+      mapMarker = L.marker(latlng, { draggable: true, keyboard: false }).addTo(map);
+      mapMarker.on('dragend', () => {
+        const p = mapMarker.getLatLng();
+        setMapPick({ mode: 'map', x: p.lng, y: p.lat }, false);
+      });
+    } else {
+      mapMarker.setLatLng(latlng);
+    }
+    if (pan) map.setView(latlng, Math.max(map.getZoom(), 17));
+    $('mapPicked').textContent =
+      pick.mode === 'place'
+        ? t('map.pickedPlace', { name: pick.name, address: pick.address || '' })
+        : t('map.pickedPoint', { lat: pick.y.toFixed(5), lng: pick.x.toFixed(5) });
+    $('mapOk').disabled = false;
+  }
+
+  async function openMap() {
+    mapPick = null;
+    $('mapOk').disabled = true;
+    $('mapPicked').textContent = t('map.hint');
+    $('mapResults').hidden = true;
+    $('mapDialog').showModal();
+    try {
+      await loadLeaflet();
+    } catch (err) {
+      $('mapPicked').textContent = err.message;
+      return;
+    }
+    const o = data && data.settings.origin;
+    const center = o && Number.isFinite(o.y) ? [o.y, o.x] : MAP_START;
+    if (!map) {
+      map = L.map('mapBox', { zoomControl: true }).setView(center, 16);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+      }).addTo(map);
+      map.on('click', (e) => setMapPick({ mode: 'map', x: e.latlng.lng, y: e.latlng.lat }, false));
+    } else {
+      map.setView(center, 16);
+      if (mapMarker) {
+        mapMarker.remove();
+        mapMarker = null;
+      }
+    }
+    // 창이 열린 뒤 크기를 다시 계산해야 지도가 빈칸 없이 그려진다
+    setTimeout(() => map.invalidateSize(), 50);
+  }
+  $('locMapBtn').addEventListener('click', openMap);
+  $('mapCancel').addEventListener('click', () => $('mapDialog').close());
+
+  $('mapSearchForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const q = $('locSearchInput').value.trim();
+    const q = $('mapSearchInput').value.trim();
     if (!q) return;
-    withBusy(async () => {
+    const list = $('mapResults');
+    try {
       const res = await api(`/api/places?q=${encodeURIComponent(q)}`);
-      searchResults = res.places;
-      const list = $('locResults');
-      list.innerHTML = searchResults.length
-        ? searchResults.map((p, i) => `<li><button type="button" data-place="${i}">${esc(p.name)}<small>${esc(p.address)}</small></button></li>`).join('')
+      mapResults = res.places;
+      list.innerHTML = mapResults.length
+        ? mapResults.map((p, i) => `<li><button type="button" data-place="${i}">${esc(p.name)}<small>${esc(p.address)}</small></button></li>`).join('') +
+          (res.attribution ? `<li class="muted small-text">${esc(res.attribution)}</li>` : '')
         : `<li><button type="button" disabled>${esc(t('loc.noResults'))}</button></li>`;
-      list.hidden = false;
-    });
+    } catch (err) {
+      list.innerHTML = `<li class="error">${esc(err.message)}</li>`;
+    }
+    list.hidden = false;
   });
 
-  $('locResults').addEventListener('click', (e) => {
+  $('mapResults').addEventListener('click', (e) => {
     const btn = e.target.closest('[data-place]');
-    if (!btn) return;
-    const p = searchResults[Number(btn.dataset.place)];
+    if (!btn || !map) return;
+    const p = mapResults[Number(btn.dataset.place)];
+    setMapPick({ mode: 'place', name: p.name, address: p.address, x: p.x, y: p.y }, true);
+    $('mapResults').hidden = true;
+  });
+
+  $('mapOk').addEventListener('click', () => {
+    if (!mapPick) return;
+    const pick = mapPick;
     withBusy(async () => {
-      await setLocation({ mode: 'place', name: p.name, address: p.address, x: p.x, y: p.y });
-      $('locResults').hidden = true;
-      $('locSearchForm').hidden = true;
-      showMessage(t('loc.setPlace', { name: p.name }));
+      $('mapOk').disabled = true;
+      try {
+        await setLocation(pick.mode === 'place' ? { mode: 'place', name: pick.name, address: pick.address, x: pick.x, y: pick.y } : { mode: 'map', x: pick.x, y: pick.y });
+      } finally {
+        $('mapOk').disabled = false;
+      }
+      $('mapDialog').close();
+      showMessage(pick.mode === 'place' ? t('loc.setPlace', { name: pick.name }) : t('map.set', { name: originLabel(data.settings.origin) }));
     });
   });
 
@@ -1711,7 +1800,7 @@
   }
   refresh();
   setInterval(() => {
-    const dialogOpen = ['userDialog', 'menuDialog', 'noticeDialog', 'placeDialog', 'enterDialog', 'reviewDialog'].some((id) => $(id).open);
+    const dialogOpen = ['userDialog', 'menuDialog', 'noticeDialog', 'placeDialog', 'enterDialog', 'reviewDialog', 'mapDialog'].some((id) => $(id).open);
     if (!busy && !noGroup && !document.hidden && !dialogOpen) refresh();
   }, POLL_MS);
   document.addEventListener('visibilitychange', () => {

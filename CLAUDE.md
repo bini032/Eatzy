@@ -44,6 +44,7 @@ README의 "다른 사람들에게 링크로 공유하기"를 따른다.
 - 계정은 저장 문서의 `users`(모든 그룹 공통)에 있고, id는 이름에서 만든다(`src/users.js`의 `userIdFor`). 비밀번호는 `src/auth.js`의 scrypt 해시로만 저장한다. 로그인하면 세션 토큰을 주고(`sessions`에는 토큰 해시만 저장), 화면은 `x-session` 헤더로 보낸다. 같은 토큰을 HttpOnly 쿠키(`eatzy_session`, SameSite=Lax, 자동 로그인이면 365일)에도 넣어 헤더가 없거나 만료되면 쿠키로 인증한다. 서버는 세션으로만 사용자를 구분한다(`voterFrom`, `isAdminReq`).
 - 계정별로 쓴 그룹은 `users[id].groups`(그룹id→마지막 사용 시각)와 `lastGroup`에 기록한다(`touchGroup`, 같은 그룹이면 10분에 한 번만 저장). `/api/state`의 `me.groups`와 로그인 응답의 `groups`는 최근 순이다.
 - 후기·별점은 그룹 상태의 `reviews`(`{ [가게id]: { name, category, items: { [사용자id]: { name, rating, comment, at } } } }`)에 저장한다(`src/reviews.js`). 제외 기준은 `settings.ratingFilter`(기본 평균 2.5 미만 + 후기 2개 이상)이고, `pickCandidates`의 `exclude`로 자동 후보에서만 뺀다(직접 고르기는 허용).
+- 기준 위치의 지도 지정은 `public/vendor/leaflet`(Leaflet 1.9.4, 화면에서 필요할 때만 불러옴) + OpenStreetMap 타일이다. 장소 검색 `/api/places`와 좌표→이름 변환은 `src/geocode.js`(카카오 키가 있으면 카카오, 없으면 Nominatim, 호출 간격 `NOMINATIM_GAP_MS` 기본 1.1초)를 쓴다.
 - 관리자: `SB` 계정(일반 계정처럼 처음 입력한 비밀번호로 생성, 모든 그룹 관리자 + 전체 현황 `/api/admin/overview`), 그룹을 만든 계정(`meta.ownerId`), 또는 `x-admin-key`/`key`로 보낸 `ADMIN_KEY`(업로드 스크립트용).
 - 저장 문서의 `authVersion`이 바뀌면(`src/store.js`) 예전 계정·세션·그룹 관리자 정보를 지운다.
 - 화면 문구는 `public/i18n.js`(ko/en/ja/zh), 서버 안내 메시지는 `src/i18n.js`(한국어 문장이 키, `x-lang` 헤더로 선택)에 있다. 문구를 추가하면 네 언어를 모두 채운다.

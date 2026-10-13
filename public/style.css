@@ -166,6 +166,18 @@ input::placeholder, textarea::placeholder { color: hsl(var(--muted-foreground));
 .loc-results { list-style: none; margin: 8px 0 0; padding: 4px; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
 .loc-results button { width: 100%; height: auto; padding: 8px 10px; justify-content: flex-start; text-align: left; border: 0; box-shadow: none; flex-direction: column; align-items: flex-start; gap: 0; white-space: normal; }
 .loc-results small { color: hsl(var(--muted-foreground)); font-weight: 400; }
+.map-dialog { width: min(720px, calc(100vw - 32px)); max-width: none; }
+.map-dialog .loc-results { max-height: 180px; overflow-y: auto; }
+.map-box {
+  height: min(420px, 55vh);
+  margin-top: 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  background: hsl(var(--muted));
+  z-index: 0;
+}
+.map-box .leaflet-control-attribution { font-size: 10px; }
+.map-picked { min-height: 1.4em; margin: 8px 0 0; }
 .source-info { margin: 12px 0 0; padding-top: 12px; border-top: 1px solid hsl(var(--border)); }
 
 .find-row { margin: 20px 0 8px; display: grid; grid-template-columns: 1fr; gap: 8px; }

@@ -63,14 +63,9 @@
       </div>
       <div class="loc-actions">
         <button id="locCurrentBtn" class="ghost small" type="button" data-i18n="loc.current">📍 내 현재 위치로 갱신</button>
-        <button id="locSearchToggle" class="ghost small" type="button" data-i18n="loc.searchToggle">🔎 장소 검색해서 지정</button>
+        <button id="locMapBtn" class="ghost small" type="button" data-i18n="loc.mapBtn">🗺️ 지도에서 검색·지정</button>
         <button id="locDefaultBtn" class="ghost small" type="button"></button>
       </div>
-      <form id="locSearchForm" class="loc-search" hidden>
-        <input id="locSearchInput" type="search" data-i18n-placeholder="loc.searchPh" autocomplete="off" />
-        <button class="small" type="submit" data-i18n="loc.searchBtn">검색</button>
-      </form>
-      <ul id="locResults" class="loc-results" hidden></ul>
       <p id="sourceInfo" class="muted small-text source-info"></p>
     </section>
 
@@ -278,6 +273,22 @@
         <button id="menuOk" class="primary" type="submit" data-i18n="save">저장</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="mapDialog" class="map-dialog">
+    <h3 data-i18n="map.title">🗺️ 지도에서 위치 지정</h3>
+    <p class="muted small-text" data-i18n="map.desc"></p>
+    <form id="mapSearchForm" class="loc-search">
+      <input id="mapSearchInput" type="search" data-i18n-placeholder="loc.searchPh" autocomplete="off" />
+      <button class="small" type="submit" data-i18n="loc.searchBtn">검색</button>
+    </form>
+    <ul id="mapResults" class="loc-results" hidden></ul>
+    <div id="mapBox" class="map-box"></div>
+    <p id="mapPicked" class="map-picked muted small-text"></p>
+    <div class="dialog-actions">
+      <button id="mapCancel" class="ghost" type="button" data-i18n="cancel">취소</button>
+      <button id="mapOk" class="primary" type="button" data-i18n="map.ok" disabled>이 위치로 지정</button>
+    </div>
   </dialog>
 
   <dialog id="reviewDialog">
