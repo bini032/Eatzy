@@ -598,7 +598,9 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     const poolFor = src.type === 'list' ? async (cat) => listPool(src.places, cat, origin, radius) : (cat) => kakaoPool(cat, origin, radius);
     // 별점 기준 미달 가게는 자동 후보에서 뺀다 (직접 고르기는 그대로 허용)
     const exclude = reviews.excludedIds(s.reviews, reviews.ratingFilter(s.settings));
-    const { candidates, missing } = await pickCandidates(s, origin, radius, poolFor, exclude);
+    // includeLast: 지난번 결정 가게를 후보에 다시 넣을지 (화면에서 고름, 기본 넣음)
+    const includeLast = req.body?.includeLast !== false;
+    const { candidates, missing } = await pickCandidates(s, origin, radius, poolFor, exclude, { includeLast });
     if (candidates.length === 0) {
       throw new AppError(
         404,

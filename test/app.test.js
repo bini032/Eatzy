@@ -1284,3 +1284,33 @@ test('카카오 오류: 오류 내용과 해결 방법을 알려 주고, 가게 
     t.close();
   }
 });
+
+test('지난번 결정 가게: 넣기를 고르면 같은 카테고리 자리에 다시 나오고, 빼기를 고르면 후보에서 빠진다', async () => {
+  const places = [
+    { name: '지난한식A', category: '한식' },
+    { name: '지난한식B', category: '한식' },
+    { name: '지난한식C', category: '한식' },
+    { name: '지난중식', category: '중식' },
+  ];
+  const t = await setup({ noKakao: true, places });
+  try {
+    const { round } = (await t.call('POST', '/api/rounds', {})).body;
+    const korean = round.candidates.find((c) => c.categoryKey === 'korean');
+    await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V1, candidateId: korean.id });
+    await t.call('POST', `/api/rounds/${round.id}/complete`, { key: 'hs' });
+
+    let r = await t.call('POST', '/api/rounds', {}, { 'x-admin-key': 'hs' });
+    let k = r.body.round.candidates.find((c) => c.categoryKey === 'korean');
+    assert.equal(k.id, korean.id, '기본은 지난번 결정 가게를 다시 넣는다');
+    assert.equal(k.pinned, true);
+
+    for (let i = 0; i < 5; i++) {
+      r = await t.call('POST', '/api/rounds', { includeLast: false }, { 'x-admin-key': 'hs' });
+      k = r.body.round.candidates.find((c) => c.categoryKey === 'korean');
+      assert.notEqual(k.id, korean.id, '빼기를 고르면 후보에 나오지 않는다');
+      assert.equal(k.pinned, false);
+    }
+  } finally {
+    t.close();
+  }
+});

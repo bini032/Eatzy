@@ -66,14 +66,15 @@ function randomItem(list) {
 // - 직전 확정 가게는 같은 카테고리 자리에 다시 노출(위치를 알면 반경 안일 때만)
 // - 나머지는 이전에 노출된 적 없는 곳 위주로 랜덤, 다 돌면 기록을 비우고 다시 시작
 // - exclude(가게 id 모음)에 든 가게(별점 기준 미달)는 뽑지도, 다시 노출하지도 않는다
+// - includeLast가 false면 직전 확정 가게를 다시 보여 주지 않고, 그 가게는 이번 후보에서 아예 뺀다
 // poolFor(category) -> Promise<place[]>
-async function pickCandidates(state, origin, radius, poolFor, exclude = new Set()) {
+async function pickCandidates(state, origin, radius, poolFor, exclude = new Set(), { includeLast = true } = {}) {
   const candidates = [];
   const missing = [];
   const lastWinner = state.lastWinner;
 
   for (const cat of CATEGORIES) {
-    if (lastWinner && lastWinner.categoryKey === cat.key && !exclude.has(lastWinner.id)) {
+    if (includeLast && lastWinner && lastWinner.categoryKey === cat.key && !exclude.has(lastWinner.id)) {
       const d = distanceOrNull(origin, lastWinner);
       if (d === null || d <= radius) {
         candidates.push({ ...stripWinner(lastWinner), distance: d, categoryKey: cat.key, categoryLabel: cat.label, pinned: true });

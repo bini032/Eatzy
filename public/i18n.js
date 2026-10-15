@@ -58,6 +58,7 @@ window.EATZY_I18N = {
     'source.none': '후보로 쓸 가게가 아직 없습니다. 관리자가 아래 "가게 관리"에서 가게를 등록해야 합니다.',
 
     'find.new': '🍽️ 맛집 찾기 (새 투표 시작)',
+    'find.includeLast': "지난번 결정 가게({name})도 후보에 넣기",
     'find.again': '🔄 후보 다시 찾기',
     'find.searching': '근처 맛집을 찾는 중…',
     'find.missing': '주변에서 {cats} 가게는 찾지 못했어요.',
@@ -411,6 +412,7 @@ window.EATZY_I18N = {
     'source.none': 'No restaurants yet. An admin needs to add them under "Manage restaurants" below.',
 
     'find.new': '🍽️ Find restaurants (start a new vote)',
+    'find.includeLast': "Include the last decided place ({name}) as a candidate",
     'find.again': '🔄 Draw candidates again',
     'find.searching': 'Finding nearby restaurants…',
     'find.missing': 'No nearby {cats} restaurants were found.',
@@ -764,6 +766,7 @@ window.EATZY_I18N = {
     'source.none': '候補にするお店がまだありません。管理者が下の「お店の管理」で登録してください。',
 
     'find.new': '🍽️ お店を探す（新しい投票）',
+    'find.includeLast': "前回決まったお店（{name}）も候補に入れる",
     'find.again': '🔄 候補を選び直す',
     'find.searching': '近くのお店を探しています…',
     'find.missing': '周辺に{cats}のお店が見つかりませんでした。',
@@ -1117,6 +1120,7 @@ window.EATZY_I18N = {
     'source.none': '还没有可作为候选的餐厅。需要管理员在下方“餐厅管理”中登记。',
 
     'find.new': '🍽️ 找餐厅（开始新投票）',
+    'find.includeLast': "将上次决定的餐厅（{name}）也加入候选",
     'find.again': '🔄 重新抽选候选',
     'find.searching': '正在查找附近的餐厅…',
     'find.missing': '附近没有找到{cats}餐厅。',
