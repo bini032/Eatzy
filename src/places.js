@@ -1,10 +1,10 @@
 const fs = require('fs');
 const crypto = require('crypto');
 
-const LABELS = ['한식', '중식', '양식', '분식'];
+const { LABELS, normalizeCategory } = require('./categories');
 
 // restaurants.json 형식:
-// [{ "name": "가게명", "category": "한식|중식|양식|분식",
+// [{ "name": "가게명", "category": "한식|세계음식|분식", "cuisine": "세계음식의 세부 종류(일식, 베트남 …, 선택)",
 //    "address": "", "phone": "", "url": "지도 링크", "x": 경도, "y": 위도, "memo": "",
 //    "menus": ["메뉴1", "메뉴2"], "naverUrl": "네이버 지도 링크(선택, 없으면 이름+주소 검색 링크)" }]
 // naverUrl이 네이버 지도/플레이스 장소 링크면 장소 번호(naverPlaceId)를 뽑아 메뉴 탭 링크에 쓴다.
@@ -20,7 +20,9 @@ function validatePlaces(list) {
     if (!raw || typeof raw !== 'object') return errors.push(`${where}: 객체가 아닙니다.`);
     const name = String(raw.name || '').trim();
     if (!name) return errors.push(`${where}: name이 비어 있습니다.`);
-    if (!LABELS.includes(raw.category)) {
+    // 예전 카테고리(중식·양식 등)는 세계음식 + 세부 종류로 바꿔 받는다
+    const cat = normalizeCategory(raw.category, raw.cuisine);
+    if (!cat.label) {
       return errors.push(`${where} (${name}): category는 ${LABELS.join('/')} 중 하나여야 합니다.`);
     }
     const hasX = raw.x !== undefined && raw.x !== null && raw.x !== '';
@@ -41,8 +43,9 @@ function validatePlaces(list) {
     places.push({
       id,
       name,
-      category: raw.category,
-      label: raw.category,
+      category: cat.label,
+      label: cat.label,
+      cuisine: cat.cuisine.slice(0, 12),
       address,
       phone: String(raw.phone || '').trim(),
       url: String(raw.url || '').trim(),

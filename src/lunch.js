@@ -1,12 +1,7 @@
 const crypto = require('crypto');
 const kakao = require('./kakao');
 
-const CATEGORIES = [
-  { key: 'korean', label: '한식' },
-  { key: 'chinese', label: '중식' },
-  { key: 'western', label: '양식' },
-  { key: 'snack', label: '분식' },
-];
+const { CATEGORIES } = require('./categories');
 
 const MAX_PAGES = 3; // 카카오 키워드 검색은 최대 45건(15건 x 3페이지)까지 조회 가능
 
@@ -30,21 +25,21 @@ function distanceOrNull(origin, p) {
 
 // 카카오 검색: 반경 안의 음식점 중 카카오 분류에 해당 카테고리명이 들어간 곳.
 // 이용 정책상 검색 결과를 저장하지 않도록 매번 실시간으로 조회한다.
+// 카카오 실시간 검색. 세계음식처럼 검색어가 여러 개면 검색어마다 1페이지씩만 본다 (호출 수 절약)
 async function kakaoPool(category, origin, radius) {
   const seen = new Map();
-  for (let page = 1; page <= MAX_PAGES; page++) {
-    const { places, isEnd } = await kakao.keywordSearch({
-      query: category.label,
-      x: origin.x,
-      y: origin.y,
-      radius,
-      page,
-      food: true,
-    });
-    for (const p of places) {
-      if (p.category.includes(category.label)) seen.set(p.id, p);
+  const pages = category.queries.length > 1 ? 1 : MAX_PAGES;
+  for (const query of category.queries) {
+    for (let page = 1; page <= pages; page++) {
+      const { places, isEnd } = await kakao.keywordSearch({ query, x: origin.x, y: origin.y, radius, page, food: true });
+      for (const p of places) {
+        if (!p.category.includes(query)) continue;
+        // 세부 종류: 카카오 분류의 두 번째 단계 (예: "음식점 > 아시아음식 > 베트남음식" -> 아시아음식)
+        const cuisine = category.queries.length > 1 ? (p.category.split('>')[1] || query).trim() : '';
+        seen.set(p.id, { ...p, cuisine });
+      }
+      if (isEnd) break;
     }
-    if (isEnd) break;
   }
   return [...seen.values()];
 }
@@ -62,7 +57,7 @@ function randomItem(list) {
   return list[crypto.randomInt(list.length)];
 }
 
-// 카테고리마다 한 곳씩 뽑는다.
+// 카테고리마다 정해진 수(count)만큼 뽑는다 (한식 1, 세계음식 2, 분식 1).
 // - 직전 확정 가게는 같은 카테고리 자리에 다시 노출(위치를 알면 반경 안일 때만)
 // - 나머지는 이전에 노출된 적 없는 곳 위주로 랜덤, 다 돌면 기록을 비우고 다시 시작
 // - exclude(가게 id 모음)에 든 가게(별점 기준 미달)는 뽑지도, 다시 노출하지도 않는다
@@ -72,43 +67,46 @@ async function pickCandidates(state, origin, radius, poolFor, exclude = new Set(
   const candidates = [];
   const missing = [];
   const lastWinner = state.lastWinner;
+  const meta = (cat) => ({ categoryKey: cat.key, categoryLabel: cat.label });
 
   for (const cat of CATEGORIES) {
+    let slots = cat.count || 1;
+    const picked = [];
     if (includeLast && lastWinner && lastWinner.categoryKey === cat.key && !exclude.has(lastWinner.id)) {
       const d = distanceOrNull(origin, lastWinner);
       if (d === null || d <= radius) {
-        candidates.push({ ...stripWinner(lastWinner), distance: d, categoryKey: cat.key, categoryLabel: cat.label, pinned: true });
-        continue;
+        picked.push({ ...stripWinner(lastWinner), distance: d, ...meta(cat), pinned: true });
+        slots--;
       }
     }
 
     const pool = (await poolFor(cat)).filter((p) => (!lastWinner || p.id !== lastWinner.id) && !exclude.has(p.id));
-    if (pool.length === 0) {
-      missing.push(cat.label);
-      continue;
-    }
     let recent = state.recent[cat.key] || [];
-    let fresh = pool.filter((p) => !recent.includes(p.id));
-    if (fresh.length === 0) {
-      recent = [];
-      fresh = pool;
+    for (let i = 0; i < slots; i++) {
+      const left = pool.filter((p) => !picked.some((x) => x.id === p.id));
+      if (!left.length) break;
+      let fresh = left.filter((p) => !recent.includes(p.id));
+      if (fresh.length === 0) {
+        recent = [];
+        fresh = left;
+      }
+      // 같은 카테고리에서 여러 곳을 뽑을 때는 가능하면 세부 종류(일식, 베트남 …)가 겹치지 않게
+      const usedCuisines = new Set(picked.map((p) => p.cuisine).filter(Boolean));
+      const varied = fresh.filter((p) => !p.cuisine || !usedCuisines.has(p.cuisine));
+      const pick = randomItem(varied.length ? varied : fresh);
+      recent = [...recent, pick.id];
+      picked.push({ ...pick, distance: distanceOrNull(origin, pick), ...meta(cat), pinned: false });
     }
-    const pick = randomItem(fresh);
-    state.recent[cat.key] = [...recent, pick.id];
-    candidates.push({
-      ...pick,
-      distance: distanceOrNull(origin, pick),
-      categoryKey: cat.key,
-      categoryLabel: cat.label,
-      pinned: false,
-    });
+    state.recent[cat.key] = recent;
+    if (!picked.length) missing.push(cat.label);
+    candidates.push(...picked);
   }
   return { candidates, missing };
 }
 
 function stripWinner(w) {
-  const { id, name, category, address, phone, url, naverUrl, naverPlaceId, memo, menus, x, y } = w;
-  return { id, name, category, address, phone, url, naverUrl, naverPlaceId, memo, menus, x, y };
+  const { id, name, category, cuisine, address, phone, url, naverUrl, naverPlaceId, memo, menus, x, y } = w;
+  return { id, name, category, cuisine, address, phone, url, naverUrl, naverPlaceId, memo, menus, x, y };
 }
 
 // 투표 값: { candidateId, menus: [...] } (메뉴 여러 개 선택 가능)

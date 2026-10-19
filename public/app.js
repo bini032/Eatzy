@@ -34,10 +34,14 @@
     return s.replace(/\{(\w+)\}/g, (m, k) => (k in params ? String(params[k]) : m));
   }
 
-  // 카테고리 데이터는 한국어 라벨(한식/중식/양식/분식)이고 표시할 때만 번역한다
+  // 카테고리 데이터는 한국어 라벨(한식/세계음식/분식)이고 표시할 때만 번역한다
   function catName(label) {
     const key = `cat.${label}`;
     return I18N.ko[key] ? t(key) : label || '';
+  }
+  // 세계음식은 세부 종류(일식, 베트남 …)를 함께: "세계음식 · 일식"
+  function catLabel(label, cuisine) {
+    return catName(label) + (cuisine ? ` · ${cuisine}` : '');
   }
 
   function applyStatic() {
@@ -550,7 +554,7 @@
       el.innerHTML = `
         <p class="eyebrow">${esc(t('decision.eyebrow'))}</p>
         <h2><button type="button" class="name-btn" data-pop="winner" title="${esc(t('pop.open'))}">${esc(w.name)} <span class="info-i" aria-hidden="true">ⓘ</span></button></h2>
-        <p>${esc(catName(w.categoryLabel))}</p>
+        <p>${esc(catLabel(w.categoryLabel, w.cuisine))}</p>
         ${w.memo ? `<p>${esc(w.memo)}</p>` : ''}
         ${w.address || w.distance != null ? `<p class="muted">${esc(w.address)}${w.address && w.distance != null ? ' · ' : ''}${w.distance != null ? esc(t('decision.about', { d: formatDistance(w.distance) })) : ''}</p>` : ''}
         ${w.phone ? `<p>☎ ${esc(w.phone)}</p>` : ''}
@@ -629,7 +633,7 @@
           return `
           <article class="card${mine ? ' mine' : ''}${leader ? ' leader' : ''}">
             <div class="card-top">
-              <span class="badge cat">${esc(catName(c.categoryLabel))}</span>
+              <span class="badge cat">${esc(catLabel(c.categoryLabel, c.cuisine))}</span>
               ${c.pinned ? `<span class="badge pin">${esc(t('card.pinned'))}</span>` : ''}
               ${leader ? `<span class="badge lead">${esc(done ? t('card.final') : t('card.leading'))}</span>` : ''}
               ${ratingBadge(c.id)}
@@ -684,7 +688,7 @@
     $('historySection').hidden = items.length === 0;
     $('history').innerHTML = items
       .map(
-        (h) => `<li><span>${esc(catName(h.winner.categoryLabel))} · <strong>${esc(h.winner.name)}</strong> ${ratingBadge(h.winner.id)}</span>
+        (h) => `<li><span>${esc(catLabel(h.winner.categoryLabel, h.winner.cuisine))} · <strong>${esc(h.winner.name)}</strong> ${ratingBadge(h.winner.id)}</span>
           <span class="history-right"><span class="muted">${formatTime(h.decidedAt)}</span>${reviewButton(h.winner, true)}${
             isAdmin() ? `<button class="small ghost danger review-mini" type="button" data-history-del="${esc(h.roundId)}" title="${esc(t('history.delete'))}" aria-label="${esc(t('history.delete'))}">🗑</button>` : ''
           }</span></li>`
@@ -1129,14 +1133,14 @@
     const q = $('manualSearch').value.trim().toLowerCase();
     const selectedIds = new Set(manualSelected.map((p) => p.id).filter(Boolean));
     const matches = manualPlaces.filter(
-      (p) => !q || [p.name, p.address, p.category, catName(p.category)].some((v) => String(v || '').toLowerCase().includes(q))
+      (p) => !q || [p.name, p.address, p.category, p.cuisine, catName(p.category)].some((v) => String(v || '').toLowerCase().includes(q))
     );
     const shown = matches.slice(0, 30);
     $('manualResults').innerHTML = shown.length
       ? shown
           .map(
             (p) => `<li><button type="button" class="${selectedIds.has(p.id) ? 'on' : ''}" data-manual-id="${esc(p.id)}" aria-pressed="${selectedIds.has(p.id)}">
-              <span><strong>${esc(p.name)}</strong> ${p.rating ? `<span class="star-text">★ ${p.rating.avg.toFixed(1)}</span>` : ''} <small>${esc(catName(p.category))}${p.address ? ` · ${esc(p.address)}` : ''}</small></span>
+              <span><strong>${esc(p.name)}</strong> ${p.rating ? `<span class="star-text">★ ${p.rating.avg.toFixed(1)}</span>` : ''} <small>${esc(catLabel(p.category, p.cuisine))}${p.address ? ` · ${esc(p.address)}` : ''}</small></span>
               <span class="check-mark">${selectedIds.has(p.id) ? '✓' : '+'}</span></button></li>`
           )
           .join('') + (matches.length > shown.length ? `<li class="muted small-text">${esc(t('manual.more', { n: matches.length - shown.length }))}</li>` : '')
@@ -1716,7 +1720,7 @@
       .replace('\u0000', `<strong>${places.length}</strong>`)
       .replace('\u0001', '<code>npm run upload-places</code>');
     $('adminList').innerHTML = places.length
-      ? ['한식', '중식', '양식', '분식']
+      ? ['한식', '세계음식', '분식']
           .map((label) => {
             const rows = places.filter((p) => p.category === label);
             if (!rows.length) return `<div class="admin-group"><h4>${esc(t('admin.groupEmpty', { cat: catName(label) }))}</h4></div>`;
@@ -1728,6 +1732,7 @@
                   <strong>${esc(p.name)}</strong>
                   <small>${esc(
                     [
+                      p.cuisine,
                       p.address,
                       Number.isFinite(p.x) ? t(p.coordSource === 'osm-street' ? 'coord.rowApprox' : 'coord.row') : t('coord.rowNone'),
                       p.menus.length ? t('admin.menusInfo', { n: p.menus.length, list: p.menus.slice(0, 5).join(', ') + (p.menus.length > 5 ? '…' : '') }) : t('admin.noMenus'),
@@ -1821,6 +1826,7 @@
     const place = {
       name: f.name.value.trim(),
       category: f.category.value,
+      cuisine: f.category.value === '세계음식' ? f.cuisine.value.trim() : '',
       address: f.address.value.trim(),
       url: f.url.value.trim(),
       naverUrl: f.naverUrl.value.trim(),

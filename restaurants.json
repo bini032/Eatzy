@@ -154,7 +154,8 @@
   },
   {
     "name": "안동장",
-    "category": "중식",
+    "category": "세계음식",
+    "cuisine": "중식",
     "address": "서울 중구 을지로 124",
     "url": "https://www.diningcode.com/profile.php?rid=oL1J1ndYQNgv",
     "memo": "1948년부터 이어진 노포 · 을지로3가 쪽이라 조금 걸어야 함",
@@ -169,7 +170,8 @@
   },
   {
     "name": "만복림",
-    "category": "중식",
+    "category": "세계음식",
+    "cuisine": "중식",
     "address": "서울 중구 무교로 17-17",
     "phone": "0507-1317-6661",
     "url": "https://www.diningcode.com/profile.php?rid=phSv8SvanJiK",
@@ -184,7 +186,8 @@
   },
   {
     "name": "북경",
-    "category": "중식",
+    "category": "세계음식",
+    "cuisine": "중식",
     "address": "서울 중구 세종대로20길 23 (원창빌딩 지하)",
     "phone": "02-752-8434",
     "url": "https://www.diningcode.com/profile.php?rid=wMHGpbtnBrF8",
@@ -198,7 +201,8 @@
   },
   {
     "name": "원흥",
-    "category": "중식",
+    "category": "세계음식",
+    "cuisine": "중식",
     "address": "서울 중구 다동길 46 (다동빌딩)",
     "url": "https://www.siksinhot.com/P/316985",
     "memo": "다동 화상 중식당 · 고기튀김과 짬뽕 · 일요일 휴무(시점 불명)",
@@ -208,7 +212,8 @@
   },
   {
     "name": "초류향",
-    "category": "중식",
+    "category": "세계음식",
+    "cuisine": "중식",
     "address": "서울 중구 다동길 24-10",
     "url": "https://www.diningcode.com/profile.php?rid=CuRVzdQzqDBZ",
     "memo": "1989년 개업 · 점심 탕면 메뉴",
@@ -219,7 +224,8 @@
   },
   {
     "name": "개화",
-    "category": "중식",
+    "category": "세계음식",
+    "cuisine": "중식",
     "address": "서울 중구 남대문로 52-5",
     "phone": "02-776-0508",
     "url": "https://www.diningcode.com/profile.php?rid=reUE33WZY1CG",
@@ -232,7 +238,8 @@
   },
   {
     "name": "행화촌",
-    "category": "중식",
+    "category": "세계음식",
+    "cuisine": "중식",
     "address": "서울 중구 남대문로 52-5 2층",
     "phone": "02-771-0172",
     "url": "https://www.diningcode.com/profile.php?rid=fyyp6Mh5oi67",
@@ -246,7 +253,8 @@
   },
   {
     "name": "향미",
-    "category": "중식",
+    "category": "세계음식",
+    "cuisine": "중식",
     "address": "서울 중구 남대문로 52-5 1층",
     "phone": "02-773-8835",
     "url": "https://www.diningcode.com/profile.php?rid=xHAcBBHlmqfv",
@@ -259,7 +267,8 @@
   },
   {
     "name": "산동교자",
-    "category": "중식",
+    "category": "세계음식",
+    "cuisine": "중식",
     "address": "서울 중구 명동2길 26",
     "url": "https://www.diningcode.com/profile.php?rid=2nrKYyY3cev7",
     "memo": "명동 중국대사관 쪽 · 도로명 번호가 출처마다 다름(명동2길 22/26)",
@@ -273,7 +282,8 @@
   },
   {
     "name": "꽁시면관 본점",
-    "category": "중식",
+    "category": "세계음식",
+    "cuisine": "중식",
     "address": "서울 중구 명동2길 45",
     "phone": "02-778-8863",
     "url": "https://www.diningcode.com/profile.php?rid=P4Bo3YW7YZTW",
@@ -288,7 +298,8 @@
   },
   {
     "name": "란주칼면",
-    "category": "중식",
+    "category": "세계음식",
+    "cuisine": "중식",
     "address": "서울 중구 소공로 64 (동남빌딩)",
     "url": "https://www.siksinhot.com/P/25074",
     "memo": "도삭면 전문(옛 란주라미엔) · 대기 있음 · 신세계백화점 근처라 약 1km · 가격은 오래된 정보",
@@ -300,7 +311,8 @@
   },
   {
     "name": "일일향 을지로점",
-    "category": "중식",
+    "category": "세계음식",
+    "cuisine": "중식",
     "address": "서울 중구 남대문로 125 3층 (DGB)",
     "phone": "0507-1498-7754",
     "url": "https://polle.com/place/234TEO/%EC%9D%BC%EC%9D%BC%ED%96%A5",
@@ -314,7 +326,8 @@
   },
   {
     "name": "북경원",
-    "category": "중식",
+    "category": "세계음식",
+    "cuisine": "중식",
     "address": "서울 중구 남대문로1길 13 1층",
     "phone": "02-319-2009",
     "url": "https://www.diningcode.com/profile.php?rid=VbJy72mMevJp",
@@ -326,7 +339,8 @@
   },
   {
     "name": "오구반점",
-    "category": "중식",
+    "category": "세계음식",
+    "cuisine": "중식",
     "address": "서울 중구 수표로 60",
     "phone": "02-2267-0516",
     "url": "https://www.diningcode.com/profile.php?rid=fACPeLst7juv",
@@ -340,7 +354,8 @@
   },
   {
     "name": "데일리픽스 을지로점",
-    "category": "양식",
+    "category": "세계음식",
+    "cuisine": "양식",
     "address": "서울 중구 남대문로9길 24 1층",
     "url": "https://www.diningcode.com/profile.php?rid=kHirMOd5x6u5",
     "memo": "한우 패티 수제버거 · 세트는 15,000원이 넘을 수 있음",
@@ -353,7 +368,8 @@
   },
   {
     "name": "을지돈가스 명동본점",
-    "category": "양식",
+    "category": "세계음식",
+    "cuisine": "양식",
     "address": "서울 중구 명동9길 10 1층",
     "phone": "0507-1470-9972",
     "url": "https://www.diningcode.com/profile.php?rid=maY2dlB7NvHP",
@@ -365,7 +381,8 @@
   },
   {
     "name": "써브웨이 을지로입구점",
-    "category": "양식",
+    "category": "세계음식",
+    "cuisine": "양식",
     "address": "서울 중구 남대문로 112 1층",
     "phone": "02-730-8777",
     "url": "https://www.diningcode.com/profile.php?rid=qrUkVEaTyJwr",
@@ -379,7 +396,8 @@
   },
   {
     "name": "브루클린더버거조인트 청계천점",
-    "category": "양식",
+    "category": "세계음식",
+    "cuisine": "양식",
     "address": "서울 중구 청계천로 14",
     "phone": "02-318-7180",
     "url": "https://www.diningcode.com/profile.php?rid=8gfSBZhW6ohD",
@@ -392,7 +410,8 @@
   },
   {
     "name": "우정함박 페럼타워점",
-    "category": "양식",
+    "category": "세계음식",
+    "cuisine": "양식",
     "address": "서울 중구 수하동 39-2 2층",
     "url": "https://www.diningcode.com/profile.php?rid=idUG6ZmxfsHH",
     "memo": "페럼타워 옆 함박·돈까스 · 점심 줄 서는 편",
@@ -405,7 +424,8 @@
   },
   {
     "name": "맘스터치LAB 명동점",
-    "category": "양식",
+    "category": "세계음식",
+    "cuisine": "양식",
     "address": "서울 중구 명동9길 37",
     "phone": "02-318-3799",
     "url": "https://www.diningcode.com/profile.php?rid=gxoOd0VNC3g0",
@@ -419,7 +439,8 @@
   },
   {
     "name": "로키버거",
-    "category": "양식",
+    "category": "세계음식",
+    "cuisine": "양식",
     "address": "서울 중구 을지로 95-2 1층",
     "url": "https://www.diningcode.com/profile.php?rid=PJtkDvEGTfwv",
     "memo": "수제버거 · 을지로3가 쪽이라 약 1km",
@@ -430,7 +451,8 @@
   },
   {
     "name": "파작",
-    "category": "양식",
+    "category": "세계음식",
+    "cuisine": "양식",
     "address": "서울 종로구 청계천로 57 1층",
     "url": "https://www.diningcode.com/profile.php?rid=QBGKibLikCW2",
     "memo": "화덕 샌드위치·샐러드 · 청계천 북쪽(종각역 쪽) 약 1km",
@@ -442,7 +464,8 @@
   },
   {
     "name": "보노보스버거",
-    "category": "양식",
+    "category": "세계음식",
+    "cuisine": "양식",
     "address": "서울 중구 남대문로 30 1층",
     "phone": "02-3789-0707",
     "url": "https://www.diningcode.com/profile.php?rid=L1wtm0X4SOo2",
@@ -455,7 +478,8 @@
   },
   {
     "name": "니즈버거 을지로점",
-    "category": "양식",
+    "category": "세계음식",
+    "cuisine": "양식",
     "address": "서울 중구 마른내로 13 1층",
     "url": "https://www.diningcode.com/profile.php?rid=WiVNS6Kpn3NB",
     "memo": "수제버거 · 을지로3가역 쪽이라 1km를 넘을 수 있음",

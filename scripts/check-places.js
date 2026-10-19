@@ -9,6 +9,11 @@ console.log(`파일: ${file}`);
 for (const label of LABELS) {
   const n = places.filter((p) => p.category === label).length;
   console.log(`  ${label}: ${n}곳${n === 0 ? '  (이 카테고리는 후보에 나오지 않습니다)' : ''}`);
+  // 세계음식은 세부 종류별 개수도 보여 준다
+  const kinds = {};
+  for (const p of places.filter((x) => x.category === label && x.cuisine)) kinds[p.cuisine] = (kinds[p.cuisine] || 0) + 1;
+  const list = Object.entries(kinds).sort((x, y) => y[1] - x[1]).map(([k, v]) => `${k} ${v}`);
+  if (list.length) console.log(`    세부: ${list.join(', ')}`);
 }
 const noCoords = places.filter((p) => p.x === null).length;
 if (noCoords) console.log(`  좌표 없는 가게 ${noCoords}곳: 거리 표시와 반경 필터 없이 항상 후보에 포함됩니다.`);

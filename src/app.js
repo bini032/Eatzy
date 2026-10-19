@@ -764,6 +764,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
         id: p.id,
         name: p.name,
         category: p.category,
+        cuisine: p.cuisine || '',
         address: p.address,
         menus: (s.menus[p.id] || p.menus || []).length,
         rating: reviews.placeRating(s.reviews[p.id]),

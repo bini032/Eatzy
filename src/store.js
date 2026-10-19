@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { migrateGroupCategories } = require('./categories');
 
 // 그룹 하나의 상태. 전체 저장 문서는 { users: {...}, groups: { default: 그룹상태, <그룹id>: 그룹상태 } }
 function defaultState() {
@@ -35,7 +36,10 @@ function normalize(raw) {
     }
     root.authVersion = AUTH_VERSION;
   }
-  for (const [id, g] of Object.entries(root.groups)) root.groups[id] = { ...defaultState(), ...g };
+  for (const [id, g] of Object.entries(root.groups)) {
+    root.groups[id] = { ...defaultState(), ...g };
+    migrateGroupCategories(root.groups[id]); // 한식/중식/양식/분식 -> 한식/세계음식/분식
+  }
   if (!root.groups.default) root.groups.default = defaultState();
   return root;
 }

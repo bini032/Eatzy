@@ -18,7 +18,7 @@
 
 - 가게 정보를 지어내지 않는다. 이름, 주소, 전화, 좌표는 확인한 출처가 있는 것만 넣고, 확인하지 못한 항목은 비워 둔다.
 - 후보를 찾으면 먼저 표로 보여 주고(이름, 카테고리, 주소, 출처 링크), 사용자가 고른 것만 파일에 저장한다.
-- 카테고리는 `한식`, `중식`, `양식`, `분식` 중 하나만 쓴다. 카테고리마다 최소 몇 곳씩은 있어야 매번 다른 곳이 나온다.
+- 카테고리는 `한식`, `세계음식`, `분식` 중 하나만 쓴다(`src/categories.js`). 세계음식은 중식·양식·일식·베트남 등 외국 음식 전체이고 `cuisine`에 세부 종류를 적는다. 한 번에 한식 1, 세계음식 2(서로 다른 cuisine 우선), 분식 1곳을 뽑으므로 카테고리마다 최소 몇 곳씩, 세계음식은 여러 세부 종류가 있어야 매번 다른 곳이 나온다.
 - 카카오맵, 네이버 지도 등의 검색 결과를 옮겨 적을 때는 해당 서비스의 이용 정책상 저장이 허용되는지 사용자에게 상기시킨다.
 - 메뉴(`menus`)도 같은 원칙이다. 가게 메뉴판, 지도 서비스의 메뉴 정보처럼 확인한 출처가 있는 메뉴만 넣는다. 확인이 어려우면 비워 두고, 앱의 "메뉴 직접 추가" 칸(누구나) 또는 "메뉴 편집 (관리자)"에서 입력하면 된다고 안내한다.
 - `naverUrl`은 실제 네이버 지도 장소 링크를 확인했을 때만 넣는다. 없으면 비워 두면 앱이 "이름 + 구 + 도로명" 검색 링크를 만든다(`public/app.js`의 `naverQuery`).
@@ -43,6 +43,7 @@ README의 "다른 사람들에게 링크로 공유하기"를 따른다.
 - 관리자 키 기본값은 `hs`이고 `ADMIN_KEY`로 바꾼다. 키를 화면 코드에 넣지 않는다.
 - 계정은 저장 문서의 `users`(모든 그룹 공통)에 있고, id는 이름에서 만든다(`src/users.js`의 `userIdFor`). 비밀번호는 `src/auth.js`의 scrypt 해시로만 저장한다. 로그인하면 세션 토큰을 주고(`sessions`에는 토큰 해시만 저장), 화면은 `x-session` 헤더로 보낸다. 같은 토큰을 HttpOnly 쿠키(`eatzy_session`, SameSite=Lax, 자동 로그인이면 365일)에도 넣어 헤더가 없거나 만료되면 쿠키로 인증한다. 서버는 세션으로만 사용자를 구분한다(`voterFrom`, `isAdminReq`).
 - 계정별로 쓴 그룹은 `users[id].groups`(그룹id→마지막 사용 시각)와 `lastGroup`에 기록한다(`touchGroup`, 같은 그룹이면 10분에 한 번만 저장). `/api/state`의 `me.groups`와 로그인 응답의 `groups`는 최근 순이다.
+- 카테고리 정의와 예전 카테고리(중식·양식) 변환은 `src/categories.js`에 있다. 저장 문서를 읽을 때(`normalize`) 가게·후보·결정 기록·별점·뽑기 기록의 예전 카테고리를 세계음식 + `cuisine`으로 바꾼다.
 - 후기·별점은 그룹 상태의 `reviews`(`{ [가게id]: { name, category, items: { [사용자id]: { name, rating, comment, at } } } }`)에 저장한다(`src/reviews.js`). 제외 기준은 `settings.ratingFilter`(기본 평균 2.5 미만 + 후기 2개 이상)이고, `pickCandidates`의 `exclude`로 자동 후보에서만 뺀다(직접 고르기는 허용).
 - 기준 위치의 지도 지정은 `public/vendor/leaflet`(Leaflet 1.9.4, 화면에서 필요할 때만 불러옴) + OpenStreetMap 타일이다. 장소 검색 `/api/places`와 좌표→이름 변환은 `src/geocode.js`(카카오 키가 있으면 카카오, 없으면 Nominatim, 호출 간격 `NOMINATIM_GAP_MS` 기본 1.1초)를 쓴다.
 - 좌표 자동 채우기는 `/api/admin/geocode`(POST 시작, GET 진행 상황)이고 서버 메모리의 그룹별 작업으로 백그라운드 실행한다(`runGeocode`, `geocodeAddress`). 결과는 가게의 `x`/`y`/`coordSource`(`osm` 건물, `osm-street` 길 위치)로 저장하고, 가게 목록 병합 업로드 때 좌표 없는 항목은 기존 좌표를 유지한다. `NOMINATIM_URL`로 다른 Nominatim 서버를 쓸 수 있다.
