@@ -1705,7 +1705,9 @@
 
   async function loadAdmin() {
     try {
-      renderAdmin((await adminApi('/api/admin/places')).places);
+      const res = await adminApi('/api/admin/places');
+      renderAdmin(res.places);
+      renderImportFile(res.fileOnly || 0);
     } catch (err) {
       adminFail(err);
     }
@@ -1750,6 +1752,21 @@
           .join('')
       : `<p class="muted small-text">${esc(t('admin.empty'))}</p>`;
   }
+
+  // 기본 목록(restaurants.json)에 새로 들어온 가게 가져오기
+  function renderImportFile(n) {
+    $('importFile').hidden = !n;
+    if (n) $('importFileText').textContent = t('admin.importFileText', { n });
+  }
+  $('importFileBtn').addEventListener('click', async () => {
+    try {
+      const res = await adminApi('/api/admin/places/import-file', { method: 'POST', body: {} });
+      renderImportFile(0);
+      await adminAfterChange(res.places, t('admin.importFileDone', { n: res.added }));
+    } catch (err) {
+      adminFail(err);
+    }
+  });
 
   // 주소로 좌표 자동 채우기: 서버가 백그라운드로 찾고, 화면은 2초마다 진행 상황을 본다
   let coordPolling = false;

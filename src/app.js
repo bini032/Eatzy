@@ -463,9 +463,30 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
 
   // ---------- 가게 목록 관리 (관리자) ----------
   // CLI 업로드(scripts/upload-places.js)와 관리자 화면이 함께 쓴다. 키는 x-admin-key 헤더 또는 body.key
+  // 기본 목록(restaurants.json)에는 있는데 이 그룹의 저장 목록(DB)에는 없는 가게
+  // (그룹 목록이 한 번 DB에 저장되면 이후 파일에 추가한 가게는 자동으로 들어오지 않으므로 관리자가 가져온다)
+  function fileOnlyPlaces() {
+    const s = state();
+    if (!(s.places || []).length || !placesFile) return [];
+    const have = new Set(s.places.map((p) => p.id));
+    return loadPlaces(placesFile).places.filter((p) => !have.has(p.id));
+  }
+
   app.get('/api/admin/places', (req, res) => {
     requireAdmin(req);
-    res.json({ places: savedPlacesView() });
+    res.json({ places: savedPlacesView(), fileOnly: fileOnlyPlaces().length });
+  });
+
+  // 기본 목록의 새 가게를 이 그룹 목록에 추가 (이미 있는 가게는 건드리지 않음)
+  app.post('/api/admin/places/import-file', (req, res) => {
+    requireAdmin(req);
+    const s = state();
+    const add = fileOnlyPlaces();
+    if (add.length) {
+      s.places = [...s.places, ...add];
+      store.save();
+    }
+    res.json({ added: add.length, places: savedPlacesView(), fileOnly: 0 });
   });
 
   // body: { places: [...], mode: 'merge' | 'replace' }. merge는 같은 가게(이름+주소)면 덮어쓰고 나머지는 추가

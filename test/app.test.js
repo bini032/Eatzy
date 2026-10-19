@@ -1346,3 +1346,40 @@ test('카테고리 변경: 예전 중식·양식 데이터는 세계음식 + 세
   assert.equal(errors.length, 0);
   assert.deepEqual(places.map((p) => [p.category, p.cuisine]), [['세계음식', '일식'], ['세계음식', '베트남'], ['분식', '']]);
 });
+
+test('기본 목록의 새 가게 가져오기, 세계음식은 가게 수가 많은 종류에 쏠리지 않는다', async () => {
+  const base = [
+    { name: '기본한식', category: '한식' },
+    { name: '기본분식', category: '분식' },
+    ...Array.from({ length: 10 }, (_, i) => ({ name: `중식${i}`, category: '세계음식', cuisine: '중식' })),
+    { name: '쌀국수집', category: '세계음식', cuisine: '베트남' },
+    { name: '라멘집', category: '세계음식', cuisine: '일식' },
+  ];
+  const t = await setup({ noKakao: true, places: base });
+  try {
+    // 세계음식 2자리에 중식이 하나도 없는 투표가 꽤 나와야 한다 (종류를 먼저 같은 확률로 고르므로 약 1/3)
+    let noChinese = 0;
+    for (let i = 0; i < 40; i++) {
+      const { round } = (await t.call('POST', '/api/rounds', {}, { 'x-admin-key': 'hs' })).body;
+      const kinds = round.candidates.filter((c) => c.categoryKey === 'global').map((c) => c.cuisine);
+      assert.equal(new Set(kinds).size, 2, '세계음식 2곳은 서로 다른 종류');
+      if (!kinds.includes('중식')) noChinese++;
+    }
+    assert.ok(noChinese >= 3, `중식 없는 투표 ${noChinese}회`);
+
+    // 관리자가 가게를 하나 추가하면 그룹 목록이 DB에 저장되고, 이후 파일에 추가한 가게는 가져오기 전까지 안 들어온다
+    await t.call('POST', '/api/admin/places', { mode: 'merge', places: [{ name: '관리자추가', category: '한식' }] }, { 'x-admin-key': 'hs' });
+    fs.writeFileSync(t.placesFile, JSON.stringify([...base, { name: '새타코', category: '세계음식', cuisine: '멕시칸' }, { name: '새순두부', category: '한식' }]));
+    let r = await t.call('GET', '/api/admin/places', null, { 'x-admin-key': 'hs' });
+    assert.equal(r.body.fileOnly, 2);
+    assert.equal((await t.call('POST', '/api/admin/places/import-file', { voterId: V1 })).status, 403);
+    r = await t.call('POST', '/api/admin/places/import-file', {}, { 'x-admin-key': 'hs' });
+    assert.equal(r.body.added, 2);
+    assert.ok(r.body.places.some((p) => p.name === '새타코' && p.cuisine === '멕시칸'));
+    assert.ok(r.body.places.some((p) => p.name === '관리자추가'), '관리자가 추가한 가게는 그대로');
+    r = await t.call('GET', '/api/admin/places', null, { 'x-admin-key': 'hs' });
+    assert.equal(r.body.fileOnly, 0);
+  } finally {
+    t.close();
+  }
+});

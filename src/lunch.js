@@ -59,7 +59,7 @@ function randomItem(list) {
 
 // 카테고리마다 정해진 수(count)만큼 뽑는다 (한식 1, 세계음식 2, 분식 1).
 // - 직전 확정 가게는 같은 카테고리 자리에 다시 노출(위치를 알면 반경 안일 때만)
-// - 나머지는 이전에 노출된 적 없는 곳 위주로 랜덤, 다 돌면 기록을 비우고 다시 시작
+// - 나머지는 세부 종류를 먼저 고른 뒤(종류별 같은 확률) 그 종류에서 이전에 노출된 적 없는 곳 위주로 랜덤, 다 돌면 그 종류 기록을 비우고 다시 시작
 // - exclude(가게 id 모음)에 든 가게(별점 기준 미달)는 뽑지도, 다시 노출하지도 않는다
 // - includeLast가 false면 직전 확정 가게를 다시 보여 주지 않고, 그 가게는 이번 후보에서 아예 뺀다
 // poolFor(category) -> Promise<place[]>
@@ -85,15 +85,21 @@ async function pickCandidates(state, origin, radius, poolFor, exclude = new Set(
     for (let i = 0; i < slots; i++) {
       const left = pool.filter((p) => !picked.some((x) => x.id === p.id));
       if (!left.length) break;
-      let fresh = left.filter((p) => !recent.includes(p.id));
-      if (fresh.length === 0) {
-        recent = [];
-        fresh = left;
-      }
-      // 같은 카테고리에서 여러 곳을 뽑을 때는 가능하면 세부 종류(일식, 베트남 …)가 겹치지 않게
+      // 1) 세부 종류(일식, 베트남 …)를 먼저 같은 확률로 고른다. 가게 수가 많은 종류(예: 중식)만 자주 나오지 않게.
+      //    같은 카테고리에서 여러 곳을 뽑을 때는 이미 뽑은 종류는 가능하면 피한다.
       const usedCuisines = new Set(picked.map((p) => p.cuisine).filter(Boolean));
-      const varied = fresh.filter((p) => !p.cuisine || !usedCuisines.has(p.cuisine));
-      const pick = randomItem(varied.length ? varied : fresh);
+      const unused = left.filter((p) => !p.cuisine || !usedCuisines.has(p.cuisine));
+      const kindPool = unused.length ? unused : left;
+      const kind = randomItem([...new Set(kindPool.map((p) => p.cuisine || ''))]);
+      const inKind = kindPool.filter((p) => (p.cuisine || '') === kind);
+      // 2) 그 종류 안에서는 최근에 나오지 않은 가게를 고르고, 다 나왔으면 그 종류의 기록만 비우고 다시 시작
+      let fresh = inKind.filter((p) => !recent.includes(p.id));
+      if (fresh.length === 0) {
+        const ids = new Set(inKind.map((p) => p.id));
+        recent = recent.filter((id) => !ids.has(id));
+        fresh = inKind;
+      }
+      const pick = randomItem(fresh);
       recent = [...recent, pick.id];
       picked.push({ ...pick, distance: distanceOrNull(origin, pick), ...meta(cat), pinned: false });
     }
