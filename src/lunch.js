@@ -57,6 +57,36 @@ function randomItem(list) {
   return list[crypto.randomInt(list.length)];
 }
 
+// 한 곳 고르기 (left: 고를 수 있는 가게, picked: 같은 카테고리에서 이미 뽑은 가게, recent: 최근에 나온 가게 id)
+// 1) 세부 종류(일식, 베트남 …)를 먼저 같은 확률로 고른다. 가게 수가 많은 종류(예: 중식)만 자주 나오지 않게.
+//    이미 뽑은 종류는 가능하면 피한다.
+// 2) 그 종류 안에서는 최근에 나오지 않은 가게를 고르고, 다 나왔으면 그 종류의 기록만 비우고 다시 시작
+function choosePlace(left, picked, recent) {
+  const usedCuisines = new Set(picked.map((p) => p.cuisine).filter(Boolean));
+  const unused = left.filter((p) => !p.cuisine || !usedCuisines.has(p.cuisine));
+  const kindPool = unused.length ? unused : left;
+  const kind = randomItem([...new Set(kindPool.map((p) => p.cuisine || ''))]);
+  const inKind = kindPool.filter((p) => (p.cuisine || '') === kind);
+  let fresh = inKind.filter((p) => !recent.includes(p.id));
+  if (fresh.length === 0) {
+    const ids = new Set(inKind.map((p) => p.id));
+    recent = recent.filter((id) => !ids.has(id));
+    fresh = inKind;
+  }
+  const pick = randomItem(fresh);
+  return { pick, recent: [...recent, pick.id] };
+}
+
+// 후보 한 곳만 바꾸기: 같은 카테고리에서 지금 후보들과 겹치지 않는 가게를 하나 고른다 (없으면 null)
+async function pickReplacement(state, cat, origin, radius, poolFor, { exclude = new Set(), others = [] } = {}) {
+  const lastWinner = state.lastWinner;
+  const left = (await poolFor(cat)).filter((p) => !exclude.has(p.id) && (!lastWinner || p.id !== lastWinner.id));
+  if (!left.length) return null;
+  const chosen = choosePlace(left, others, state.recent[cat.key] || []);
+  state.recent[cat.key] = chosen.recent;
+  return { ...chosen.pick, distance: distanceOrNull(origin, chosen.pick), categoryKey: cat.key, categoryLabel: cat.label, pinned: false };
+}
+
 // 카테고리마다 정해진 수(count)만큼 뽑는다 (한식 1, 세계음식 2, 분식 1).
 // - 직전 확정 가게는 같은 카테고리 자리에 다시 노출(위치를 알면 반경 안일 때만)
 // - 나머지는 세부 종류를 먼저 고른 뒤(종류별 같은 확률) 그 종류에서 이전에 노출된 적 없는 곳 위주로 랜덤, 다 돌면 그 종류 기록을 비우고 다시 시작
@@ -85,23 +115,9 @@ async function pickCandidates(state, origin, radius, poolFor, exclude = new Set(
     for (let i = 0; i < slots; i++) {
       const left = pool.filter((p) => !picked.some((x) => x.id === p.id));
       if (!left.length) break;
-      // 1) 세부 종류(일식, 베트남 …)를 먼저 같은 확률로 고른다. 가게 수가 많은 종류(예: 중식)만 자주 나오지 않게.
-      //    같은 카테고리에서 여러 곳을 뽑을 때는 이미 뽑은 종류는 가능하면 피한다.
-      const usedCuisines = new Set(picked.map((p) => p.cuisine).filter(Boolean));
-      const unused = left.filter((p) => !p.cuisine || !usedCuisines.has(p.cuisine));
-      const kindPool = unused.length ? unused : left;
-      const kind = randomItem([...new Set(kindPool.map((p) => p.cuisine || ''))]);
-      const inKind = kindPool.filter((p) => (p.cuisine || '') === kind);
-      // 2) 그 종류 안에서는 최근에 나오지 않은 가게를 고르고, 다 나왔으면 그 종류의 기록만 비우고 다시 시작
-      let fresh = inKind.filter((p) => !recent.includes(p.id));
-      if (fresh.length === 0) {
-        const ids = new Set(inKind.map((p) => p.id));
-        recent = recent.filter((id) => !ids.has(id));
-        fresh = inKind;
-      }
-      const pick = randomItem(fresh);
-      recent = [...recent, pick.id];
-      picked.push({ ...pick, distance: distanceOrNull(origin, pick), ...meta(cat), pinned: false });
+      const chosen = choosePlace(left, picked, recent);
+      recent = chosen.recent;
+      picked.push({ ...chosen.pick, distance: distanceOrNull(origin, chosen.pick), ...meta(cat), pinned: false });
     }
     state.recent[cat.key] = recent;
     if (!picked.length) missing.push(cat.label);
@@ -158,4 +174,4 @@ function sameSet(a, b) {
   return a.length === b.length && [...a].sort().join('|') === [...b].sort().join('|');
 }
 
-module.exports = { CATEGORIES, pickCandidates, kakaoPool, listPool, tally, readVote, distanceMeters, hasCoords, randomItem };
+module.exports = { CATEGORIES, pickCandidates, pickReplacement, kakaoPool, listPool, tally, readVote, distanceMeters, hasCoords, randomItem };

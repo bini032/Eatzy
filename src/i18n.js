@@ -39,11 +39,6 @@ const MESSAGES = {
     ja: '保存済みリストにないお店です。',
     zh: '该餐厅不在已保存的列表中。',
   },
-  '이미 투표가 진행 중입니다. 다시 뽑으려면 관리자 키가 필요합니다.': {
-    en: 'A vote is already in progress. The admin key is required to draw again.',
-    ja: 'すでに投票中です。引き直すには管理者キーが必要です。',
-    zh: '投票正在进行中。重新抽选需要管理员密钥。',
-  },
   '가게 목록(restaurants.json)이 비어 있고 KAKAO_REST_API_KEY도 없어 후보를 뽑을 수 없습니다. README를 참고해 가게를 등록해 주세요.': {
     en: 'No candidates can be drawn: the restaurant list is empty and KAKAO_REST_API_KEY is not set. Please register restaurants (see README).',
     ja: 'お店リストが空で KAKAO_REST_API_KEY もないため候補を選べません。README を参考にお店を登録してください。',
@@ -146,6 +141,13 @@ const MESSAGES = {
     zh: 'Kakao API 错误（HTTP {status}）：{detail} {hint}',
   },
   '랜덤 뽑기는 관리자만 할 수 있습니다.': { en: 'Only an admin can run the random draw.', ja: 'ランダム抽選は管理者のみ可能です。', zh: '只有管理员可以随机抽签。' },
+  '이미 후보가 정해져 투표 중입니다. 후보 다시 찾기는 관리자만 할 수 있습니다.': {
+    en: 'Candidates are already set and voting is in progress. Only an admin can find candidates again.',
+    ja: '候補はすでに決まり投票中です。候補の探し直しは管理者のみ可能です。',
+    zh: '候选已确定，正在投票中。只有管理员可以重新寻找候选。',
+  },
+  '후보를 찾을 수 없습니다.': { en: 'Candidate not found.', ja: '候補が見つかりません。', zh: '找不到该候选。' },
+  '바꿀 수 있는 다른 가게가 없습니다.': { en: 'There is no other place to switch to.', ja: '入れ替えられる他のお店がありません。', zh: '没有可替换的其他餐厅。' },
   '관리자 권한이 필요합니다.': { en: 'Admin permission is required.', ja: '管理者権限が必要です。', zh: '需要管理员权限。' },
   '전체 관리자(SB)만 볼 수 있습니다.': { en: 'Only the super admin (SB) can view this.', ja: '全体管理者（SB）のみ閲覧できます。', zh: '仅超级管理员（SB）可以查看。' },
   '확인할 수 없는 링크입니다.': { en: 'This link cannot be checked.', ja: '確認できないリンクです。', zh: '无法检查该链接。' },

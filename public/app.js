@@ -645,6 +645,7 @@
             <div class="links">
               <a href="${esc(naverMapUrl(c))}" target="_blank" rel="noopener">${esc(t('card.naver'))}</a>
               ${infoLink(c)}
+              ${!done && isAdmin() ? `<button class="link replace-btn" type="button" data-replace="${esc(c.id)}">${esc(t('card.replace'))}</button>` : ''}
             </div>
             ${menuBlock(c, round, done)}
             <div class="bar"><span style="width:${(count / max) * 100}%"></span></div>
@@ -719,10 +720,16 @@
     renderRatingForm();
     renderUser();
     const round = data.round;
-    $('findBtn').textContent = round && round.status === 'voting' ? t('find.again') : t('find.new');
+    const voting = Boolean(round && round.status === 'voting');
+    $('findBtn').textContent = voting ? t('find.again') : t('find.new');
+    // 투표 중 다시 찾기·직접 고르기는 관리자만 (팀원은 결정 다음 날 첫 후보 찾기만)
+    const canStart = !voting || isAdmin();
+    $('findBtn').hidden = !canStart;
+    $('manualBtn').hidden = !canStart;
+    if (!canStart) $('manualPanel').hidden = true;
     // 지난번 결정 가게를 후보에 넣을지 (결정 기록이 있을 때만 보임)
     const last = data.lastWinner;
-    $('includeLastRow').hidden = !last || isDefaultGroup;
+    $('includeLastRow').hidden = !last || isDefaultGroup || !canStart;
     if (last) $('includeLastText').textContent = t('find.includeLast', { name: last.name });
   }
 
@@ -1339,6 +1346,21 @@
       if (btn && isAdmin()) openMenuEditor(btn.dataset.menuEdit);
     });
   }
+
+  // 관리자: 후보 한 곳만 같은 카테고리의 다른 가게로 바꾸기 (그 후보에 들어온 표는 취소)
+  $('candidates').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-replace]');
+    if (!btn || !data.round) return;
+    const c = data.round.candidates.find((x) => x.id === btn.dataset.replace);
+    if (!c) return;
+    const votes = data.round.counts[c.id] || 0;
+    if (!confirm(votes ? t('card.replaceConfirmVotes', { name: c.name, n: votes }) : t('card.replaceConfirm', { name: c.name }))) return;
+    withBusy(async () => {
+      const res = await api(`/api/rounds/${data.round.id}/candidates/${encodeURIComponent(c.id)}/replace`, { method: 'POST', body: {} });
+      applyRound(res.round);
+      showMessage(t('card.replaced', { from: res.replaced.from, to: res.replaced.to }));
+    });
+  });
 
   $('drawBtn').addEventListener('click', () =>
     withBusy(async () => {

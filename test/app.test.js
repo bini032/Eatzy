@@ -121,11 +121,11 @@ test('매번 이전에 나오지 않은 곳을 뽑고, 다 돌면 다시 시작�
   try {
     const seen = [];
     for (let i = 0; i < 3; i++) {
-      const r = await t.call('POST', '/api/rounds', {});
+      const r = await t.call('POST', '/api/rounds', {}, { 'x-admin-key': 'hs' });
       seen.push(r.body.round.candidates.find((c) => c.categoryKey === 'korean').id);
     }
     assert.equal(new Set(seen).size, 3);
-    const r = await t.call('POST', '/api/rounds', {});
+    const r = await t.call('POST', '/api/rounds', {}, { 'x-admin-key': 'hs' });
     assert.equal(r.body.round.candidates.length, 4);
   } finally {
     t.close();
@@ -296,7 +296,7 @@ test('목록 모드: 현재 위치를 지정하면 좌표 있는 가게는 반�
   try {
     await t.call('POST', '/api/location', { mode: 'current', x: 126.98, y: 37.566, radius: 1000 });
     for (let i = 0; i < 4; i++) {
-      const r = await t.call('POST', '/api/rounds', {});
+      const r = await t.call('POST', '/api/rounds', {}, { 'x-admin-key': 'hs' });
       const korean = r.body.round.candidates.find((c) => c.categoryKey === 'korean');
       assert.equal(korean.name, '목록한식A');
       assert.equal(korean.distance, 0);
@@ -1381,5 +1381,87 @@ test('기본 목록의 새 가게 가져오기, 세계음식은 가게 수가 �
     assert.equal(r.body.fileOnly, 0);
   } finally {
     t.close();
+  }
+});
+
+test('후보 찾기: 결정 다음 날에는 누구나 한 번, 투표 중 다시 찾기는 관리자만', async () => {
+  const t = await setup({ noKakao: true, places: MENU_LIST });
+  try {
+    // 첫 투표는 누구나 시작
+    let r = await t.call('POST', '/api/rounds', { voterId: V1 });
+    assert.equal(r.status, 201);
+    // 투표 중(표가 없어도) 다시 찾기는 관리자만
+    r = await t.call('POST', '/api/rounds', { voterId: V2 });
+    assert.equal(r.status, 403);
+    assert.equal(r.body.code, 'voting');
+    r = await t.call('POST', '/api/rounds', { voterId: V2, manual: [{ name: '직접', category: '한식' }] });
+    assert.equal(r.status, 403, '직접 고르기로 새로 시작하는 것도 관리자만');
+    r = await t.call('POST', '/api/rounds', {}, { 'x-admin-key': 'hs' });
+    assert.equal(r.status, 201);
+
+    // 어제 결정된 결과면 누구나 한 번 새로 찾을 수 있다
+    const round = r.body.round;
+    await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V1, candidateId: round.candidates[0].id });
+    await t.call('POST', `/api/rounds/${round.id}/complete`, { key: 'hs' });
+    t.store.state.groups.default.round.finishedAt = new Date(Date.now() - 86400000).toISOString();
+    r = await t.call('POST', '/api/rounds', { voterId: V3 });
+    assert.equal(r.status, 201);
+    r = await t.call('POST', '/api/rounds', { voterId: V3 });
+    assert.equal(r.status, 403, '두 번째부터는 관리자만');
+  } finally {
+    t.close();
+  }
+});
+
+test('후보 한 곳만 바꾸기: 관리자가 같은 카테고리의 다른 가게로 바꾸고 그 후보 표는 취소된다', async () => {
+  const places = [
+    { name: '바꿀한식A', category: '한식', menus: ['비빔밥 9,000원'] },
+    { name: '바꿀한식B', category: '한식' },
+    { name: '바꿀중식', category: '세계음식', cuisine: '중식' },
+    { name: '바꿀일식', category: '세계음식', cuisine: '일식' },
+    { name: '바꿀베트남', category: '세계음식', cuisine: '베트남' },
+    { name: '바꿀분식', category: '분식' },
+  ];
+  const onlyOne = [{ name: '하나뿐한식', category: '한식' }, { name: '하나뿐분식', category: '분식' }];
+  const t = await setup({ noKakao: true, places });
+  try {
+    const { round } = (await t.call('POST', '/api/rounds', {})).body;
+    const korean = round.candidates.find((c) => c.categoryKey === 'korean');
+    const other = round.candidates.find((c) => c.categoryKey === 'snack');
+    await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V1, candidateId: korean.id });
+    await t.call('POST', `/api/rounds/${round.id}/vote`, { voterId: V2, candidateId: other.id });
+
+    let r = await t.call('POST', `/api/rounds/${round.id}/candidates/${korean.id}/replace`, { voterId: V1 });
+    assert.equal(r.status, 403, '관리자만');
+    r = await t.call('POST', `/api/rounds/${round.id}/candidates/${korean.id}/replace`, {}, { 'x-admin-key': 'hs' });
+    assert.equal(r.status, 200);
+    const next = r.body.round.candidates.find((c) => c.categoryKey === 'korean');
+    assert.notEqual(next.id, korean.id);
+    assert.equal(r.body.replaced.removedVotes, 1);
+    assert.equal(r.body.round.counts[other.id], 1, '다른 후보 표는 그대로');
+    assert.equal(r.body.round.candidates.length, 4);
+    assert.equal(r.body.round.candidates.indexOf(r.body.round.candidates.find((c) => c.id === next.id)), round.candidates.indexOf(round.candidates.find((c) => c.id === korean.id)), '같은 자리');
+
+    // 세계음식은 남은 다른 세계음식 후보와 다른 종류로
+    const globals = r.body.round.candidates.filter((c) => c.categoryKey === 'global');
+    r = await t.call('POST', `/api/rounds/${round.id}/candidates/${globals[0].id}/replace`, {}, { 'x-admin-key': 'hs' });
+    const g2 = r.body.round.candidates.filter((c) => c.categoryKey === 'global');
+    assert.notEqual(g2[0].cuisine, g2[1].cuisine);
+    assert.ok(!globals.some((c) => c.id === g2[0].id));
+
+    // 한식은 두 곳뿐이라 다시 바꾸면 처음 가게로 돌아온다
+    r = await t.call('POST', `/api/rounds/${round.id}/candidates/${next.id}/replace`, {}, { 'x-admin-key': 'hs' });
+    assert.equal(r.body.round.candidates.find((c) => c.categoryKey === 'korean').id, korean.id);
+  } finally {
+    t.close();
+  }
+  // 그 카테고리에 다른 가게가 없으면 바꿀 수 없다
+  const t2 = await setup({ noKakao: true, places: onlyOne });
+  try {
+    const { round } = (await t2.call('POST', '/api/rounds', {})).body;
+    const r = await t2.call('POST', `/api/rounds/${round.id}/candidates/${round.candidates[0].id}/replace`, {}, { 'x-admin-key': 'hs' });
+    assert.equal(r.status, 409);
+  } finally {
+    t2.close();
   }
 });

@@ -5,7 +5,7 @@ const { AsyncLocalStorage } = require('async_hooks');
 const express = require('express');
 const { AppError } = require('./errors');
 const kakao = require('./kakao');
-const { CATEGORIES, pickCandidates, kakaoPool, listPool, tally, readVote, randomItem, distanceMeters, hasCoords } = require('./lunch');
+const { CATEGORIES, pickCandidates, pickReplacement, kakaoPool, listPool, tally, readVote, randomItem, distanceMeters, hasCoords } = require('./lunch');
 const { loadPlaces, validatePlaces, cleanMenus } = require('./places');
 const { reverseGeocode, searchPlaces, geocodeAddress, cleanAddress } = require('./geocode');
 const { buildStats, kstMonth } = require('./stats');
@@ -597,12 +597,13 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
   // 맛집 찾기 = 새 투표 시작
   app.post('/api/rounds', async (req, res) => {
     const s = state();
-    const active = s.round && s.round.status === 'voting' && Object.keys(s.round.votes).length > 0;
-    // 오늘 완료된 결과는 관리자만 새 투표로 넘길 수 있다 (다음 날부터는 누구나 시작 가능)
+    // 누구나: 결정이 끝난 다음 날(또는 첫 투표)에 한 번 후보 찾기.
+    // 관리자만: 투표가 시작된 뒤 다시 찾기, 오늘 결정된 결과를 새 투표로 넘기기
+    const voting = s.round && s.round.status === 'voting';
     const doneToday = s.round && s.round.status === 'done' && kstDate(s.round.finishedAt) === kstDate(Date.now());
-    if ((active || doneToday) && !isAdminReq(req)) {
+    if ((voting || doneToday) && !isAdminReq(req)) {
       if (doneToday) throw new AppError(403, CLOSED_MESSAGE, 'closed');
-      throw new AppError(403, '이미 투표가 진행 중입니다. 다시 뽑으려면 관리자 키가 필요합니다.');
+      throw new AppError(403, '이미 후보가 정해져 투표 중입니다. 후보 다시 찾기는 관리자만 할 수 있습니다.', 'voting');
     }
     // 직접 고르기: 목록에서 고른 가게(id)와 직접 입력한 가게({ name, category, ... })로 투표를 시작
     if (Array.isArray(req.body?.manual)) {
@@ -639,6 +640,41 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     s.round = newRound(candidates, missing, origin, radius, src.type);
     store.save();
     res.status(201).json({ round: publicRound(s.round) });
+  });
+
+  // 후보 한 곳만 바꾸기 (관리자, 투표 중): 같은 카테고리의 다른 가게로 바꾸고 그 후보에 들어온 표는 취소한다
+  app.post('/api/rounds/:id/candidates/:cid/replace', async (req, res) => {
+    const round = currentRound(req.params.id);
+    if (round.status !== 'voting') throw closedError();
+    requireAdmin(req);
+    const idx = round.candidates.findIndex((c) => c.id === req.params.cid);
+    if (idx < 0) throw new AppError(404, '후보를 찾을 수 없습니다.');
+    const old = round.candidates[idx];
+    const cat = CATEGORIES.find((c) => c.key === old.categoryKey) || CATEGORIES.find((c) => c.label === old.categoryLabel);
+    const s = state();
+    const src = placeSource();
+    if (!cat || !src.type) throw new AppError(409, '바꿀 수 있는 다른 가게가 없습니다.');
+    const origin = round.origin;
+    const radius = round.radius || s.settings.radius;
+    const poolFor = src.type === 'list' ? async (c) => listPool(src.places, c, origin, radius) : (c) => kakaoPool(c, origin, radius);
+    const exclude = reviews.excludedIds(s.reviews, reviews.ratingFilter(s.settings));
+    for (const c of round.candidates) exclude.add(c.id);
+    const others = round.candidates.filter((c, i) => i !== idx && c.categoryKey === cat.key);
+    const next = await pickReplacement(s, cat, origin, radius, poolFor, { exclude, others });
+    if (!next) throw new AppError(409, '바꿀 수 있는 다른 가게가 없습니다.');
+    next.menus = s.menus[next.id] || next.menus || [];
+    round.candidates[idx] = next;
+    // 바뀐 후보에 들어온 표는 취소하고, 동점 뽑기 결과도 다시 정하게 한다
+    let removed = 0;
+    for (const [voter, raw] of Object.entries(round.votes)) {
+      if (readVote(raw).candidateId === old.id) {
+        delete round.votes[voter];
+        removed++;
+      }
+    }
+    round.draw = null;
+    store.save();
+    res.json({ round: publicRound(round, req.user && req.user.id), replaced: { from: old.name, to: next.name, removedVotes: removed } });
   });
 
   app.post('/api/rounds/:id/vote', (req, res) => {
