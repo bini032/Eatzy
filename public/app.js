@@ -635,6 +635,7 @@
             <div class="card-top">
               <span class="badge cat">${esc(catLabel(c.categoryLabel, c.cuisine))}</span>
               ${c.pinned ? `<span class="badge pin">${esc(t('card.pinned'))}</span>` : ''}
+              ${c.source === 'kakao' ? `<span class="badge src" title="${esc(t('card.kakaoTitle'))}">${esc(t('card.kakao'))}</span>` : ''}
               ${leader ? `<span class="badge lead">${esc(done ? t('card.final') : t('card.leading'))}</span>` : ''}
               ${ratingBadge(c.id)}
             </div>
@@ -730,6 +731,8 @@
     // 지난번 결정 가게를 후보에 넣을지 (결정 기록이 있을 때만 보임)
     const last = data.lastWinner;
     $('includeLastRow').hidden = !last || isDefaultGroup || !canStart;
+    // 저장된 가게 목록 + 카카오 실시간 검색 (카카오 키가 있을 때만)
+    $('includeKakaoRow').hidden = !(data.kakaoEnabled && data.source === 'list') || isDefaultGroup || !canStart;
     if (last) $('includeLastText').textContent = t('find.includeLast', { name: last.name });
   }
 
@@ -1125,13 +1128,15 @@
   $('findBtn').addEventListener('click', () =>
     withBusy(async () => {
       showMessage(t('find.searching'));
-      await startRound({ includeLast: $('includeLastRow').hidden || $('includeLast').checked }, (round) => (round.missing.length ? t('find.missing', { cats: round.missing.map(catName).join(', ') }) : t('find.done')));
+      await startRound({ includeLast: $('includeLastRow').hidden || $('includeLast').checked, includeKakao: !$('includeKakaoRow').hidden && $('includeKakao').checked }, (round) => (round.missing.length ? t('find.missing', { cats: round.missing.map(catName).join(', ') }) : t('find.done')));
     })
   );
 
   // 체크 여부는 이 브라우저에 기억한다
   $('includeLast').checked = local.get('eatzy-include-last') !== '0';
   $('includeLast').addEventListener('change', (e) => local.set('eatzy-include-last', e.target.checked ? '1' : '0'));
+  $('includeKakao').checked = local.get('eatzy-include-kakao') !== '0';
+  $('includeKakao').addEventListener('change', (e) => local.set('eatzy-include-kakao', e.target.checked ? '1' : '0'));
 
   let manualPlaces = [];
   let manualSelected = [];

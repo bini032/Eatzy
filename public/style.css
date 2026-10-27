@@ -246,6 +246,7 @@ input::placeholder, textarea::placeholder { color: hsl(var(--muted-foreground));
 }
 .badge.cat { background: hsl(var(--primary)); border-color: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
 .badge.pin { background: hsl(var(--success-soft)); border-color: transparent; color: hsl(var(--success)); }
+.badge.src { background: hsl(48 100% 50% / 0.18); border-color: transparent; color: hsl(var(--foreground)); }
 .badge.lead { background: hsl(var(--brand)); border-color: hsl(var(--brand)); color: #fff; }
 
 /* ---------- Progress ---------- */

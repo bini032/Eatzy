@@ -1,6 +1,6 @@
 const { AppError } = require('./errors');
 
-const API_BASE = 'https://dapi.kakao.com/v2/local';
+const API_BASE = process.env.KAKAO_API_BASE || 'https://dapi.kakao.com/v2/local'; // 테스트용 가짜 서버로 바꿀 수 있다
 const FOOD_GROUP = 'FD6'; // 카카오 카테고리 그룹 코드: 음식점
 
 function apiKey() {

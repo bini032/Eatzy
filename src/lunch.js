@@ -25,7 +25,18 @@ function distanceOrNull(origin, p) {
 
 // 카카오 검색: 반경 안의 음식점 중 카카오 분류에 해당 카테고리명이 들어간 곳.
 // 이용 정책상 검색 결과를 저장하지 않도록 매번 실시간으로 조회한다.
+// 점심 후보로 맞지 않는 카카오 분류·이름 (술집, 코스·고급 위주)
+const KAKAO_SKIP = /술집|호프|요리주점|이자카야|와인|칵테일|한정식|오마카세|코스요리|파인다이닝|뷔페/;
+
+// 카카오 분류 -> 세계음식 세부 종류. "음식점 > 일식 > 초밥,롤" -> 일식, "음식점 > 아시아음식 > 베트남음식" -> 베트남
+function kakaoCuisine(categoryName, query) {
+  const parts = String(categoryName || '').split('>').map((x) => x.trim());
+  if (parts[1] === '아시아음식' && parts[2]) return parts[2].replace(/음식$/, '');
+  return parts[1] || query;
+}
+
 // 카카오 실시간 검색. 세계음식처럼 검색어가 여러 개면 검색어마다 1페이지씩만 본다 (호출 수 절약)
+// 카카오에서 온 가게는 source: 'kakao' (다음 후보 찾기 때 결정 기록에서 상세 정보를 지운다)
 async function kakaoPool(category, origin, radius) {
   const seen = new Map();
   const pages = category.queries.length > 1 ? 1 : MAX_PAGES;
@@ -33,15 +44,49 @@ async function kakaoPool(category, origin, radius) {
     for (let page = 1; page <= pages; page++) {
       const { places, isEnd } = await kakao.keywordSearch({ query, x: origin.x, y: origin.y, radius, page, food: true });
       for (const p of places) {
-        if (!p.category.includes(query)) continue;
-        // 세부 종류: 카카오 분류의 두 번째 단계 (예: "음식점 > 아시아음식 > 베트남음식" -> 아시아음식)
-        const cuisine = category.queries.length > 1 ? (p.category.split('>')[1] || query).trim() : '';
-        seen.set(p.id, { ...p, cuisine });
+        if (!p.category.includes(query) || KAKAO_SKIP.test(p.category) || KAKAO_SKIP.test(p.name)) continue;
+        const cuisine = category.queries.length > 1 ? kakaoCuisine(p.category, query) : '';
+        seen.set(p.id, { ...p, cuisine, source: 'kakao' });
       }
       if (isEnd) break;
     }
   }
   return [...seen.values()];
+}
+
+// 저장된 가게 목록 + 카카오 실시간 검색 (같은 이름의 가게는 메뉴가 있는 목록 쪽을 쓴다)
+// 카카오가 실패하거나 기준 위치가 없으면 목록만 쓴다
+function sameName(a, b) {
+  const n = (v) => String(v || '').replace(/\s+/g, '').toLowerCase();
+  const x = n(a);
+  const y = n(b);
+  return x === y || (x.length >= 3 && y.startsWith(x)) || (y.length >= 3 && x.startsWith(y));
+}
+async function mixedPool(places, category, origin, radius) {
+  const list = listPool(places, category, origin, radius);
+  if (!hasCoords(origin)) return list;
+  try {
+    const live = await kakaoPool(category, origin, radius);
+    return [...list, ...live.filter((k) => !list.some((p) => sameName(p.name, k.name)))];
+  } catch (err) {
+    console.warn(`카카오 검색 실패(${category.label}), 저장된 목록으로만 뽑습니다:`, err.message);
+    return list;
+  }
+}
+
+// 카카오에서 온 가게는 다음 후보 찾기 때 상세 정보(주소·전화·좌표·카카오 분류)를 지우고, 투표·통계·별점·다시 보여 주기에
+// 쓰는 것(장소 번호, 이름, 카테고리, 세부 종류, 카카오 장소 링크, 표·메뉴 집계)만 남긴다
+const KAKAO_DETAIL_FIELDS = ['address', 'phone', 'x', 'y', 'distance', 'category', 'label', 'memo'];
+function forgetKakaoDetails(state) {
+  const strip = (o) => {
+    if (!o || o.source !== 'kakao') return;
+    for (const f of KAKAO_DETAIL_FIELDS) delete o[f];
+  };
+  strip(state.lastWinner);
+  for (const h of state.history || []) {
+    strip(h.winner);
+    for (const c of h.candidates || []) strip(c);
+  }
 }
 
 // 등록 목록: 좌표가 있는 가게만 반경으로 거르고, 좌표가 없는 가게는 항상 포함.
@@ -102,15 +147,18 @@ async function pickCandidates(state, origin, radius, poolFor, exclude = new Set(
   for (const cat of CATEGORIES) {
     let slots = cat.count || 1;
     const picked = [];
+    const all = await poolFor(cat);
     if (includeLast && lastWinner && lastWinner.categoryKey === cat.key && !exclude.has(lastWinner.id)) {
-      const d = distanceOrNull(origin, lastWinner);
-      if (d === null || d <= radius) {
-        picked.push({ ...stripWinner(lastWinner), distance: d, ...meta(cat), pinned: true });
+      // 카카오에서 온 지난번 가게는 상세 정보를 지웠으므로 이번 카카오 검색 결과에서 다시 찾아 쓴다 (없으면 다시 보여 주지 않음)
+      const base = lastWinner.source === 'kakao' ? all.find((p) => p.id === lastWinner.id) : stripWinner(lastWinner);
+      const d = base ? distanceOrNull(origin, base) : null;
+      if (base && (d === null || d <= radius)) {
+        picked.push({ ...base, cuisine: base.cuisine || lastWinner.cuisine, distance: d, ...meta(cat), pinned: true });
         slots--;
       }
     }
 
-    const pool = (await poolFor(cat)).filter((p) => (!lastWinner || p.id !== lastWinner.id) && !exclude.has(p.id));
+    const pool = all.filter((p) => (!lastWinner || p.id !== lastWinner.id) && !exclude.has(p.id));
     let recent = state.recent[cat.key] || [];
     for (let i = 0; i < slots; i++) {
       const left = pool.filter((p) => !picked.some((x) => x.id === p.id));
@@ -127,8 +175,8 @@ async function pickCandidates(state, origin, radius, poolFor, exclude = new Set(
 }
 
 function stripWinner(w) {
-  const { id, name, category, cuisine, address, phone, url, naverUrl, naverPlaceId, memo, menus, x, y } = w;
-  return { id, name, category, cuisine, address, phone, url, naverUrl, naverPlaceId, memo, menus, x, y };
+  const { id, name, category, cuisine, address, phone, url, naverUrl, naverPlaceId, memo, menus, x, y, source } = w;
+  return { id, name, category, cuisine, address, phone, url, naverUrl, naverPlaceId, memo, menus, x, y, source };
 }
 
 // 투표 값: { candidateId, menus: [...] } (메뉴 여러 개 선택 가능)
@@ -174,4 +222,4 @@ function sameSet(a, b) {
   return a.length === b.length && [...a].sort().join('|') === [...b].sort().join('|');
 }
 
-module.exports = { CATEGORIES, pickCandidates, pickReplacement, kakaoPool, listPool, tally, readVote, distanceMeters, hasCoords, randomItem };
+module.exports = { CATEGORIES, pickCandidates, pickReplacement, kakaoPool, mixedPool, forgetKakaoDetails, listPool, tally, readVote, distanceMeters, hasCoords, randomItem };

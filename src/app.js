@@ -5,7 +5,7 @@ const { AsyncLocalStorage } = require('async_hooks');
 const express = require('express');
 const { AppError } = require('./errors');
 const kakao = require('./kakao');
-const { CATEGORIES, pickCandidates, pickReplacement, kakaoPool, listPool, tally, readVote, randomItem, distanceMeters, hasCoords } = require('./lunch');
+const { CATEGORIES, pickCandidates, pickReplacement, kakaoPool, mixedPool, forgetKakaoDetails, listPool, tally, readVote, randomItem, distanceMeters, hasCoords } = require('./lunch');
 const { loadPlaces, validatePlaces, cleanMenus } = require('./places');
 const { reverseGeocode, searchPlaces, geocodeAddress, cleanAddress } = require('./geocode');
 const { buildStats, kstMonth } = require('./stats');
@@ -605,6 +605,8 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
       if (doneToday) throw new AppError(403, CLOSED_MESSAGE, 'closed');
       throw new AppError(403, '이미 후보가 정해져 투표 중입니다. 후보 다시 찾기는 관리자만 할 수 있습니다.', 'voting');
     }
+    // 새 후보를 찾을 때마다 지난 결정 기록에 남은 카카오 가게의 상세 정보를 지운다 (투표·통계에 쓰는 것만 남김)
+    forgetKakaoDetails(s);
     // 직접 고르기: 목록에서 고른 가게(id)와 직접 입력한 가게({ name, category, ... })로 투표를 시작
     if (Array.isArray(req.body?.manual)) {
       s.round = newRound(manualCandidates(req.body.manual), [], null, s.settings.radius, 'manual');
@@ -617,7 +619,9 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     }
     const origin = await resolveOrigin(src.type === 'list');
     const radius = s.settings.radius;
-    const poolFor = src.type === 'list' ? async (cat) => listPool(src.places, cat, origin, radius) : (cat) => kakaoPool(cat, origin, radius);
+    // 저장된 목록이 있으면 카카오 실시간 검색 결과를 섞는다 (화면에서 끌 수 있음, 카카오 키가 있을 때만)
+    const mixKakao = src.type === 'list' && kakaoEnabled() && req.body?.includeKakao !== false;
+    const poolFor = poolForSource(mixKakao ? 'mixed' : src.type, src, origin, radius);
     // 별점 기준 미달 가게는 자동 후보에서 뺀다 (직접 고르기는 그대로 허용)
     const exclude = reviews.excludedIds(s.reviews, reviews.ratingFilter(s.settings));
     // includeLast: 지난번 결정 가게를 후보에 다시 넣을지 (화면에서 고름, 기본 넣음)
@@ -637,7 +641,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     for (const c of candidates) {
       c.menus = s.menus[c.id] || c.menus || [];
     }
-    s.round = newRound(candidates, missing, origin, radius, src.type);
+    s.round = newRound(candidates, missing, origin, radius, mixKakao ? 'mixed' : src.type);
     store.save();
     res.status(201).json({ round: publicRound(s.round) });
   });
@@ -656,7 +660,8 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     if (!cat || !src.type) throw new AppError(409, '바꿀 수 있는 다른 가게가 없습니다.');
     const origin = round.origin;
     const radius = round.radius || s.settings.radius;
-    const poolFor = src.type === 'list' ? async (c) => listPool(src.places, c, origin, radius) : (c) => kakaoPool(c, origin, radius);
+    // 이번 투표가 카카오를 섞어 뽑은 것이면 바꿀 때도 섞는다
+    const poolFor = poolForSource(round.source === 'mixed' && src.type === 'list' && kakaoEnabled() ? 'mixed' : src.type, src, origin, radius);
     const exclude = reviews.excludedIds(s.reviews, reviews.ratingFilter(s.settings));
     for (const c of round.candidates) exclude.add(c.id);
     const others = round.candidates.filter((c, i) => i !== idx && c.categoryKey === cat.key);
@@ -761,6 +766,13 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     store.save();
     res.json({ round: publicRound(round, voterId) });
   });
+
+  // 후보를 뽑을 가게 모음: list(저장 목록), mixed(저장 목록 + 카카오 실시간), kakao(카카오만)
+  function poolForSource(type, src, origin, radius) {
+    if (type === 'mixed') return (cat) => mixedPool(src.places, cat, origin, radius);
+    if (type === 'list') return async (cat) => listPool(src.places, cat, origin, radius);
+    return (cat) => kakaoPool(cat, origin, radius);
+  }
 
   function newRound(candidates, missing, origin, radius, source) {
     return {

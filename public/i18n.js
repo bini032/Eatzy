@@ -60,6 +60,9 @@ window.EATZY_I18N = {
 
     'find.new': '🍽️ 맛집 찾기 (새 투표 시작)',
     'find.includeLast': "지난번 결정 가게({name})도 후보에 넣기",
+    'find.includeKakao': "카카오맵 실시간 검색 결과도 후보에 섞기",
+    'card.kakao': "카카오맵",
+    'card.kakaoTitle': "카카오맵 실시간 검색으로 찾은 가게예요. 메뉴는 직접 추가할 수 있어요.",
     'find.again': '🔄 후보 다시 찾기',
     'find.searching': '근처 맛집을 찾는 중…',
     'find.missing': '주변에서 {cats} 가게는 찾지 못했어요.',
@@ -423,6 +426,9 @@ window.EATZY_I18N = {
 
     'find.new': '🍽️ Find restaurants (start a new vote)',
     'find.includeLast': "Include the last decided place ({name}) as a candidate",
+    'find.includeKakao': "Also mix in live Kakao Map search results",
+    'card.kakao': "Kakao Map",
+    'card.kakaoTitle': "Found by live Kakao Map search. You can add menus yourself.",
     'find.again': '🔄 Draw candidates again',
     'find.searching': 'Finding nearby restaurants…',
     'find.missing': 'No nearby {cats} restaurants were found.',
@@ -786,6 +792,9 @@ window.EATZY_I18N = {
 
     'find.new': '🍽️ お店を探す（新しい投票）',
     'find.includeLast': "前回決まったお店（{name}）も候補に入れる",
+    'find.includeKakao': "カカオマップのリアルタイム検索結果も候補に混ぜる",
+    'card.kakao': "カカオマップ",
+    'card.kakaoTitle': "カカオマップのリアルタイム検索で見つけたお店です。メニューは直接追加できます。",
     'find.again': '🔄 候補を選び直す',
     'find.searching': '近くのお店を探しています…',
     'find.missing': '周辺に{cats}のお店が見つかりませんでした。',
@@ -1149,6 +1158,9 @@ window.EATZY_I18N = {
 
     'find.new': '🍽️ 找餐厅（开始新投票）',
     'find.includeLast': "将上次决定的餐厅（{name}）也加入候选",
+    'find.includeKakao': "同时混入 Kakao 地图实时搜索结果",
+    'card.kakao': "Kakao 地图",
+    'card.kakaoTitle': "通过 Kakao 地图实时搜索找到的餐厅。可以自行添加菜单。",
     'find.again': '🔄 重新抽选候选',
     'find.searching': '正在查找附近的餐厅…',
     'find.missing': '附近没有找到{cats}餐厅。',

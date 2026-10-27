@@ -37,7 +37,7 @@ README의 "다른 사람들에게 링크로 공유하기"를 따른다.
 - 저장 문서는 `{ groups: { default: 그룹상태, <그룹id>: 그룹상태 } }`이다. API는 `x-group` 헤더(화면은 주소 `/g/그룹id`에서 읽음)로 그룹을 고르고, 서버 코드는 AsyncLocalStorage로 현재 그룹 상태를 `state()`로 쓴다. 그룹 관리자 키는 해시(`meta.adminTokenHash`)로만 저장한다.
 - 상태는 `DATA_DIR/state.json` 하나에 저장된다. `UPSTASH_REDIS_REST_URL`/`TOKEN`이 있으면 Upstash Redis의 키 하나에 저장된다(`src/store.js`). 어느 쪽이든 단일 서버 전제.
 - 앱에서 추가하거나 편집한 메뉴는 상태의 `menus`에 저장되고, 가게 목록 파일의 `menus`보다 우선한다.
-- 후보 출처 우선순위는 저장된 목록(상태의 `places`) > `restaurants.json` > 카카오 실시간 검색이다(`src/app.js`의 `placeSource`).
+- 후보 출처 우선순위는 저장된 목록(상태의 `places`) > `restaurants.json` > 카카오 실시간 검색이다(`src/app.js`의 `placeSource`). 목록이 있고 카카오 키가 있으면 기본으로 카카오 실시간 결과를 섞는다(`mixedPool`, 투표의 `source: 'mixed'`, 화면 `includeKakao`). 카카오 가게는 `source: 'kakao'`이고, 새 후보 찾기 때 `forgetKakaoDetails`가 결정 기록·지난번 가게에서 주소·전화·좌표·카카오 분류를 지운다(장소 번호·이름·카테고리·cuisine·place_url·집계만 남김). 카카오 응답을 `restaurants.json`이나 가게 목록 DB에 저장하지 않는다.
 - 관리자 API(`/api/admin/places`)는 `x-admin-key` 헤더로 인증한다.
 - 기본 그룹(`/`)은 입구 화면이다. `server.js`가 `lockDefaultGroup: true`로 기본 그룹의 GET 외 요청을 막는다(테스트 setup은 기본값 false).
 - 관리자 키 기본값은 `hs`이고 `ADMIN_KEY`로 바꾼다. 키를 화면 코드에 넣지 않는다.

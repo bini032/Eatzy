@@ -1465,3 +1465,59 @@ test('후보 한 곳만 바꾸기: 관리자가 같은 카테고리의 다른 �
     t2.close();
   }
 });
+
+test('카카오 섞기: 저장 목록과 카카오 실시간 결과로 뽑고, 다음 후보 찾기 때 카카오 가게 상세 정보는 지운다', async () => {
+  const places = [
+    { name: '목록한식', category: '한식', menus: ['비빔밥 9,000원'] },
+    { name: '테스트한식0', category: '한식' }, // 카카오 결과와 같은 이름 -> 목록 쪽만 쓴다
+    { name: '목록분식', category: '분식' },
+    { name: '목록일식', category: '세계음식', cuisine: '일식' },
+  ];
+  const t = await setup({ places });
+  try {
+    // 카카오를 끄면 목록에서만
+    for (let i = 0; i < 3; i++) {
+      const { round } = (await t.call('POST', '/api/rounds', { includeKakao: false }, { 'x-admin-key': 'hs' })).body;
+      assert.ok(round.candidates.every((c) => c.source !== 'kakao'));
+      assert.equal(round.source, 'list');
+    }
+    // 켜면(기본) 카카오 가게도 섞인다. 같은 이름은 목록 쪽만
+    let kakaoRound = null;
+    for (let i = 0; i < 20 && !kakaoRound; i++) {
+      const { round } = (await t.call('POST', '/api/rounds', {}, { 'x-admin-key': 'hs' })).body;
+      assert.equal(round.source, 'mixed');
+      assert.ok(!round.candidates.some((c) => c.source === 'kakao' && c.name === '테스트한식0'));
+      if (round.candidates.some((c) => c.source === 'kakao' && c.categoryKey === 'korean')) kakaoRound = round;
+    }
+    assert.ok(kakaoRound, '카카오 한식 가게가 후보로 나온다');
+    const pick = kakaoRound.candidates.find((c) => c.source === 'kakao' && c.categoryKey === 'korean');
+    assert.ok(pick.address && pick.url, '투표 중에는 상세 정보가 있다');
+
+    // 카카오 가게로 결정 -> 그날은 상세 정보가 남아 있다
+    await t.call('POST', `/api/rounds/${kakaoRound.id}/vote`, { voterId: V1, candidateId: pick.id });
+    await t.call('POST', `/api/rounds/${kakaoRound.id}/complete`, { key: 'hs' });
+    await t.call('POST', '/api/reviews', { voterId: V1, placeId: pick.id, rating: 5, comment: '좋아요' });
+    let g = t.store.state.groups.default;
+    assert.ok(g.history.at(-1).winner.address);
+
+    // 다음 후보 찾기 -> 결정 기록과 지난번 가게에서 상세 정보가 지워지고, 이름·장소 번호·링크·집계만 남는다
+    const next = (await t.call('POST', '/api/rounds', {}, { 'x-admin-key': 'hs' })).body.round;
+    g = t.store.state.groups.default;
+    const w = g.history.at(-1).winner;
+    for (const f of ['address', 'phone', 'x', 'y', 'distance', 'category']) assert.equal(w[f], undefined, f);
+    assert.deepEqual([w.id, w.name, w.source, w.categoryLabel], [pick.id, pick.name, 'kakao', '한식']);
+    assert.ok(w.url);
+    assert.equal(w.votes, 1);
+    assert.equal(g.lastWinner.address, undefined);
+    assert.equal(g.reviews[pick.id].items[V1].rating, 5, '별점은 그대로');
+    // 지난번 가게는 이번 카카오 검색 결과에서 다시 찾아 상세 정보와 함께 다시 보여 준다
+    const pinned = next.candidates.find((c) => c.pinned);
+    assert.equal(pinned.id, pick.id);
+    assert.ok(pinned.address);
+    // 통계도 그대로
+    const stats = (await t.call('GET', '/api/stats')).body;
+    assert.equal(stats.restaurants[0].name, pick.name);
+  } finally {
+    t.close();
+  }
+});
