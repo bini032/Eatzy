@@ -196,6 +196,20 @@
     </section>
 
     <section class="panel admin" id="adminSection" hidden>
+      <details id="groupAdminDetails" class="group-admin">
+        <summary data-i18n="gadmin.title">👥 그룹 현황·관리자</summary>
+        <p id="gaError" class="error" hidden></p>
+        <div id="gaTiles" class="tiles"></div>
+        <h3 class="admin-subhead" data-i18n="gadmin.admins">관리자</h3>
+        <ul id="gaAdmins" class="ga-list"></ul>
+        <form id="gaAddForm" class="rating-form-row" hidden>
+          <select id="gaAddSelect" data-i18n-aria="gadmin.pickAria" aria-label="관리자로 지정할 사람"></select>
+          <button class="small" type="submit" data-i18n="gadmin.add">관리자로 지정</button>
+        </form>
+        <p id="gaHint" class="muted small-text"></p>
+        <h3 class="admin-subhead" data-i18n="gadmin.members">이 그룹을 쓴 사람</h3>
+        <ul id="gaMembers" class="ga-list"></ul>
+      </details>
       <details id="adminDetails">
         <summary data-i18n="admin.title">🔧 가게 관리 (관리자)</summary>
         <p id="adminError" class="error" hidden></p>

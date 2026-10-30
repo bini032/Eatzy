@@ -1951,6 +1951,76 @@
     await refresh();
   }
 
+  // ---------- 그룹 현황·관리자 ----------
+  // 지정된 관리자도 현황을 보고, 관리자 지정·해제는 그룹을 만든 사람과 SB만
+  async function loadGroupAdmin() {
+    try {
+      renderGroupAdmin(await api('/api/group'));
+      $('gaError').hidden = true;
+    } catch (err) {
+      $('gaError').textContent = err.message;
+      $('gaError').hidden = false;
+    }
+  }
+  function renderGroupAdmin(g) {
+    const s = g.summary;
+    $('gaTiles').innerHTML = [
+      [t('gadmin.members'), t('stats.people', { n: s.members })],
+      [t('gadmin.places'), t('gadmin.placesN', { n: s.places })],
+      [t('gadmin.decisions'), t('gadmin.decisionsN', { month: s.decisionsThisMonth, total: s.decisionsTotal })],
+      [t('gadmin.reviews'), t('gadmin.reviewsN', { n: s.reviews })],
+    ]
+      .map(([label, value]) => `<div class="tile"><span class="label">${esc(label)}</span><strong class="text">${esc(value)}</strong></div>`)
+      .join('');
+    const rows = [`<li><span>👑 <strong>${esc(g.owner || '-')}</strong></span><span class="muted">${esc(t('gadmin.owner'))}</span></li>`].concat(
+      g.admins.map(
+        (a) => `<li><span>🛠️ <strong>${esc(a.name)}</strong> <span class="muted">${esc(t('gadmin.addedBy', { by: a.addedBy || '-', time: a.addedAt ? formatTime(a.addedAt) : '' }))}</span></span>
+          ${g.canManage ? `<button class="small ghost danger" type="button" data-ga-remove="${esc(a.id)}">${esc(t('gadmin.remove'))}</button>` : ''}</li>`
+      )
+    );
+    $('gaAdmins').innerHTML = rows.join('');
+    const candidates = g.members.filter((m) => !m.admin && !m.owner && !m.super);
+    $('gaAddForm').hidden = !g.canManage || !candidates.length;
+    $('gaAddSelect').innerHTML = candidates.map((m) => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('');
+    $('gaHint').textContent = g.canManage ? (candidates.length ? t('gadmin.hint') : t('gadmin.noCandidates')) : t('gadmin.onlyOwner');
+    $('gaMembers').innerHTML = g.members.length
+      ? g.members
+          .map(
+            (m) => `<li><span>${esc(m.name)} ${m.owner ? '👑' : m.admin ? '🛠️' : m.super ? '⭐' : ''}</span><span class="muted">${esc(t('gadmin.lastUsed', { time: formatTime(m.lastUsedAt) }))}</span></li>`
+          )
+          .join('')
+      : `<li class="muted">${esc(t('stats.empty'))}</li>`;
+  }
+  $('groupAdminDetails').addEventListener('toggle', () => {
+    if ($('groupAdminDetails').open && isAdmin()) loadGroupAdmin();
+  });
+  $('gaAddForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const userId = $('gaAddSelect').value;
+    if (!userId) return;
+    const name = $('gaAddSelect').selectedOptions[0].textContent;
+    try {
+      renderGroupAdmin(await api('/api/group/admins', { method: 'POST', body: { userId } }));
+      showMessage(t('gadmin.added', { name }));
+    } catch (err) {
+      $('gaError').textContent = err.message;
+      $('gaError').hidden = false;
+    }
+  });
+  $('gaAdmins').addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-ga-remove]');
+    if (!btn) return;
+    const name = btn.closest('li').querySelector('strong').textContent;
+    if (!confirm(t('gadmin.confirmRemove', { name }))) return;
+    try {
+      renderGroupAdmin(await api(`/api/group/admins/${encodeURIComponent(btn.dataset.gaRemove)}`, { method: 'DELETE' }));
+      showMessage(t('gadmin.removed', { name }));
+    } catch (err) {
+      $('gaError').textContent = err.message;
+      $('gaError').hidden = false;
+    }
+  });
+
   $('adminDetails').addEventListener('toggle', () => {
     if ($('adminDetails').open && isAdmin()) {
       loadAdmin();

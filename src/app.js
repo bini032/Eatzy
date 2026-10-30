@@ -163,7 +163,15 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     if (req.user && req.user.super) return true;
     const meta = state().meta;
     if (req.user && meta && meta.ownerId && meta.ownerId === req.user.id) return true;
+    // 그룹 관리자로 지정된 계정 (이 그룹 안에서만)
+    if (req.user && meta && meta.admins && meta.admins[req.user.id]) return true;
     return keyMatches(req.get('x-admin-key') ?? req.body?.key, adminKey);
+  }
+
+  // 관리자 지정·해제는 그룹을 만든 계정과 SB만
+  function canManageAdmins(req) {
+    const meta = state().meta;
+    return Boolean(req.user && meta && (req.user.super || meta.ownerId === req.user.id));
   }
 
   // 가입 겸 로그인: 처음 쓰는 이름이면 가입, 있는 이름이면 비밀번호 확인.
@@ -384,7 +392,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     const src = placeSource();
     res.json({
       group: { id: groupId(), name: s.meta ? s.meta.name : null, owner: s.meta ? s.meta.owner : null, isDefault: groupId() === 'default' },
-      me: req.user ? { ...userView(req.user), isAdmin: isAdminReq(req), groups: myGroups(req.user.id) } : null,
+      me: req.user ? { ...userView(req.user), isAdmin: isAdminReq(req), canManageAdmins: canManageAdmins(req), groups: myGroups(req.user.id) } : null,
       source: src.type,
       placesOrigin: src.origin,
       placesCount: src.places.length,
@@ -692,6 +700,65 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     round.draw = null;
     store.save();
     res.json({ round: publicRound(round, req.user && req.user.id), replaced: { from: old.name, to: next.name, removedVotes: removed } });
+  });
+
+  // ---------- 그룹 관리자·현황 ----------
+  // 그룹 현황: 만든 사람, 지정된 관리자, 이 그룹을 쓴 계정(마지막 사용 시각)과 그룹 요약
+  function groupView(req) {
+    const s = state();
+    const gid = groupId();
+    const meta = s.meta || {};
+    const admins = meta.admins || {};
+    const members = Object.entries(store.state.users)
+      .filter(([, u]) => u.groups && u.groups[gid])
+      .map(([id, u]) => ({ id, name: u.name, lastUsedAt: u.groups[gid], admin: Boolean(admins[id]), owner: id === meta.ownerId, super: Boolean(u.super) }))
+      .sort((a, b) => String(b.lastUsedAt).localeCompare(String(a.lastUsedAt)));
+    const month = kstMonth(Date.now());
+    const st = buildStats(s.history || [], month, CATEGORIES);
+    return {
+      name: meta.name || null,
+      owner: meta.owner || null,
+      createdAt: meta.createdAt || null,
+      canManage: canManageAdmins(req),
+      admins: Object.entries(admins).map(([id, a]) => ({ id, name: (store.state.users[id] && store.state.users[id].name) || a.name, addedAt: a.addedAt, addedBy: a.addedBy })),
+      members,
+      summary: {
+        members: members.length,
+        places: basePlaces().length,
+        decisionsThisMonth: st.summary.decisions,
+        decisionsTotal: (s.history || []).length,
+        reviews: Object.values(s.reviews || {}).reduce((n, r) => n + Object.keys(r.items || {}).length, 0),
+      },
+    };
+  }
+
+  app.get('/api/group', (req, res) => {
+    requireAdmin(req);
+    if (!state().meta) throw new AppError(400, '기본 주소에는 그룹 관리자를 둘 수 없습니다.');
+    res.json(groupView(req));
+  });
+
+  app.post('/api/group/admins', (req, res) => {
+    const meta = state().meta;
+    if (!meta) throw new AppError(400, '기본 주소에는 그룹 관리자를 둘 수 없습니다.');
+    if (!canManageAdmins(req)) throw new AppError(403, '관리자 지정은 그룹을 만든 사람과 SB만 할 수 있습니다.');
+    const id = String(req.body?.userId || '') || userIdFor(cleanName(req.body?.name));
+    const user = store.state.users[id];
+    if (!user) throw new AppError(404, '가입한 계정이 아닙니다. 그 사람이 먼저 로그인해야 합니다.');
+    if (id === meta.ownerId || user.super) throw new AppError(409, '이미 관리자인 계정입니다.');
+    meta.admins = meta.admins || {};
+    meta.admins[id] = { name: user.name, addedAt: new Date().toISOString(), addedBy: req.user.name };
+    store.save();
+    res.json(groupView(req));
+  });
+
+  app.delete('/api/group/admins/:userId', (req, res) => {
+    const meta = state().meta;
+    if (!meta) throw new AppError(400, '기본 주소에는 그룹 관리자를 둘 수 없습니다.');
+    if (!canManageAdmins(req)) throw new AppError(403, '관리자 지정은 그룹을 만든 사람과 SB만 할 수 있습니다.');
+    if (meta.admins) delete meta.admins[req.params.userId];
+    store.save();
+    res.json(groupView(req));
   });
 
   app.post('/api/rounds/:id/vote', (req, res) => {

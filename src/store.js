@@ -32,7 +32,7 @@ function normalize(raw) {
     root.users = {};
     root.sessions = {};
     for (const g of Object.values(root.groups)) {
-      if (g && g.meta) g.meta = { ...g.meta, ownerId: null, adminTokenHash: null };
+      if (g && g.meta) g.meta = { ...g.meta, ownerId: null, adminTokenHash: null, admins: {} };
     }
     root.authVersion = AUTH_VERSION;
   }

@@ -587,6 +587,11 @@ dialog h3 { font-size: 18px; }
 .review-head .muted { font-size: 12px; margin-left: auto; }
 .import-file { margin-bottom: 12px; padding: 12px; border: 1px solid hsl(var(--brand) / 0.5); border-radius: var(--radius); background: hsl(var(--brand) / 0.08); }
 .import-file p { margin: 0 0 8px; }
+.group-admin { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid hsl(var(--border)); }
+.ga-list { list-style: none; margin: 0 0 8px; padding: 0; }
+.ga-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid hsl(var(--border)); font-size: 14px; }
+.ga-list li:last-child { border-bottom: 0; }
+.ga-list .muted { font-size: 12px; }
 .coord-block { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid hsl(var(--border)); }
 .coord-block #coordStatus { margin: 8px 0 0; }
 .rating-form { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid hsl(var(--border)); }

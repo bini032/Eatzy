@@ -1601,3 +1601,58 @@ test('여러 가게 투표: 한 사람이 가게마다 1표씩 여러 곳에 투
     t.close();
   }
 });
+
+test('그룹 관리자 지정: 만든 사람과 SB만 지정·해제하고, 지정된 관리자는 그 그룹에서만 관리자다', async () => {
+  const t = await setup({ noKakao: true, places: MENU_LIST });
+  try {
+    const owner = await t.login('그룹장');
+    const member = await t.login('팀원A');
+    const other = await t.login('팀원B');
+    const mk = async (name) => (await t.call('POST', '/api/groups', { name }, { 'x-session': owner.token })).body.id;
+    const g = await mk('관리팀');
+    const g2 = await mk('다른팀');
+    const as = (u, gid = g) => ({ 'x-session': u.token, 'x-group': gid });
+    // 팀원들이 그룹을 써 본다 (멤버 목록에 나오도록)
+    await t.call('GET', '/api/state', null, as(member));
+    await t.call('GET', '/api/state', null, as(other));
+
+    let r = await t.call('GET', '/api/group', null, as(member));
+    assert.equal(r.status, 403, '관리자가 아니면 그룹 현황 못 봄');
+    r = await t.call('POST', '/api/group/admins', { userId: member.id }, as(other));
+    assert.equal(r.status, 403);
+
+    r = await t.call('POST', '/api/group/admins', { userId: member.id }, as(owner));
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.body.admins.map((a) => a.name), ['팀원A']);
+    assert.ok(r.body.members.some((m) => m.name === '팀원B'));
+
+    // 지정된 관리자: 이 그룹에서 관리자, 현황은 보지만 다른 사람을 지정할 수는 없다
+    let st = await t.call('GET', '/api/state', null, as(member));
+    assert.equal(st.body.me.isAdmin, true);
+    assert.equal(st.body.me.canManageAdmins, false);
+    r = await t.call('GET', '/api/group', null, as(member));
+    assert.equal(r.status, 200);
+    assert.equal(r.body.canManage, false);
+    r = await t.call('POST', '/api/group/admins', { userId: other.id }, as(member));
+    assert.equal(r.status, 403);
+    r = await t.call('POST', '/api/admin/places', { mode: 'merge', places: [{ name: '관리자추가식당', category: '한식' }] }, as(member));
+    assert.equal(r.status, 200, '식당 관리 가능');
+    // 다른 그룹에서는 관리자가 아니다
+    st = await t.call('GET', '/api/state', null, as(member, g2));
+    assert.equal(st.body.me.isAdmin, false);
+
+    // 이름으로 지정, 없는 계정은 안 된다
+    r = await t.call('POST', '/api/group/admins', { name: '없는사람' }, as(owner));
+    assert.equal(r.status, 404);
+    r = await t.call('POST', '/api/group/admins', { name: '팀원B' }, as(owner));
+    assert.equal(r.body.admins.length, 2);
+
+    // 해제
+    r = await t.call('DELETE', `/api/group/admins/${member.id}`, null, as(owner));
+    assert.deepEqual(r.body.admins.map((a) => a.name), ['팀원B']);
+    st = await t.call('GET', '/api/state', null, as(member));
+    assert.equal(st.body.me.isAdmin, false);
+  } finally {
+    t.close();
+  }
+});

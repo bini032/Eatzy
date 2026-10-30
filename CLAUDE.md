@@ -49,6 +49,6 @@ README의 "다른 사람들에게 링크로 공유하기"를 따른다.
 - 좌표 자동 채우기는 `/api/admin/geocode`(POST 시작, GET 진행 상황)이고 서버 메모리의 그룹별 작업으로 백그라운드 실행한다(`runGeocode`, `geocodeAddress`). 결과는 가게의 `x`/`y`/`coordSource`(`osm` 건물, `osm-street` 길 위치)로 저장하고, 가게 목록 병합 업로드 때 좌표 없는 항목은 기존 좌표를 유지한다. `NOMINATIM_URL`로 다른 Nominatim 서버를 쓸 수 있다.
 - 카카오 호출 오류는 카카오가 준 오류 내용과 해결 힌트를 담아 `kakao_error`로 돌려주고 서버 로그에 남긴다(`src/kakao.js`). 장소 검색은 카카오가 실패하면 Nominatim으로, 가게 목록 모드의 기본 위치는 못 찾으면 위치 없이 진행한다. 관리자는 `/api/admin/kakao-check`로 키를 점검한다.
 - 그룹 저장 목록(`places`)이 있으면 `restaurants.json` 변경은 자동 반영되지 않는다. 관리자 화면의 "새 가게 가져오기"(`/api/admin/places/import-file`)가 파일에만 있는 가게(id 기준)를 추가한다. 후보 뽑기는 카테고리 안에서 세부 종류(`cuisine`)를 먼저 같은 확률로 고른 뒤 그 종류에서 최근에 안 나온 가게를 고른다.
-- 관리자: `SB` 계정(일반 계정처럼 처음 입력한 비밀번호로 생성, 모든 그룹 관리자 + 전체 현황 `/api/admin/overview`), 그룹을 만든 계정(`meta.ownerId`), 또는 `x-admin-key`/`key`로 보낸 `ADMIN_KEY`(업로드 스크립트용).
+- 관리자: `SB` 계정(일반 계정처럼 처음 입력한 비밀번호로 생성, 모든 그룹 관리자 + 전체 현황 `/api/admin/overview`), 그룹을 만든 계정(`meta.ownerId`), 그룹 관리자로 지정된 계정(`meta.admins`, 그 그룹에서만. 지정·해제는 만든 계정과 SB만, `/api/group/admins`, 현황 `/api/group`), 또는 `x-admin-key`/`key`로 보낸 `ADMIN_KEY`(업로드 스크립트용).
 - 저장 문서의 `authVersion`이 바뀌면(`src/store.js`) 예전 계정·세션·그룹 관리자 정보를 지운다.
 - 화면 문구는 `public/i18n.js`(ko/en/ja/zh), 서버 안내 메시지는 `src/i18n.js`(한국어 문장이 키, `x-lang` 헤더로 선택)에 있다. 문구를 추가하면 네 언어를 모두 채운다.
