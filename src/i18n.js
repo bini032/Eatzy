@@ -148,6 +148,7 @@ const MESSAGES = {
   },
   '후보를 찾을 수 없습니다.': { en: 'Candidate not found.', ja: '候補が見つかりません。', zh: '找不到该候选。' },
   '바꿀 수 있는 다른 가게가 없습니다.': { en: 'There is no other place to switch to.', ja: '入れ替えられる他のお店がありません。', zh: '没有可替换的其他餐厅。' },
+  '이미 후보에 있는 가게입니다.': { en: 'That place is already a candidate.', ja: 'そのお店はすでに候補にあります。', zh: '该餐厅已在候选中。' },
   '관리자 권한이 필요합니다.': { en: 'Admin permission is required.', ja: '管理者権限が必要です。', zh: '需要管理员权限。' },
   '전체 관리자(SB)만 볼 수 있습니다.': { en: 'Only the super admin (SB) can view this.', ja: '全体管理者（SB）のみ閲覧できます。', zh: '仅超级管理员（SB）可以查看。' },
   '확인할 수 없는 링크입니다.': { en: 'This link cannot be checked.', ja: '確認できないリンクです。', zh: '无法检查该链接。' },

@@ -306,6 +306,31 @@
     </div>
   </dialog>
 
+  <dialog id="replaceDialog" class="replace-dialog">
+    <h3 id="replaceTitle"></h3>
+    <p id="replaceNote" class="muted small-text"></p>
+    <button id="replaceRandom" class="primary replace-random" type="button" data-i18n="replace.random">🎲 같은 카테고리에서 랜덤으로 바꾸기</button>
+    <p class="label replace-or" data-i18n="replace.pick">또는 직접 고르기</p>
+    <input id="replaceSearch" type="search" data-i18n-placeholder="manual.searchPh" autocomplete="off" />
+    <ul id="replaceResults" class="manual-results"></ul>
+    <form id="replaceCustom" class="manual-custom">
+      <span class="label" data-i18n="manual.customTitle">목록에 없는 가게 직접 입력</span>
+      <div class="manual-custom-row">
+        <input name="name" type="text" maxlength="80" data-i18n-placeholder="manual.customNamePh" />
+        <select name="category" data-i18n-aria="admin.categoryAria">
+          <option value="한식" data-i18n="cat.한식">한식</option>
+          <option value="세계음식" data-i18n="cat.세계음식">세계음식</option>
+          <option value="분식" data-i18n="cat.분식">분식</option>
+        </select>
+        <button class="small" type="submit" data-i18n="replace.use">이 가게로</button>
+      </div>
+    </form>
+    <p id="replaceError" class="error" hidden></p>
+    <div class="dialog-actions">
+      <button id="replaceCancel" class="ghost" type="button" data-i18n="cancel">취소</button>
+    </div>
+  </dialog>
+
   <dialog id="reviewDialog">
     <form id="reviewForm">
       <h3 id="reviewTitle"></h3>

@@ -654,20 +654,30 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     const idx = round.candidates.findIndex((c) => c.id === req.params.cid);
     if (idx < 0) throw new AppError(404, '후보를 찾을 수 없습니다.');
     const old = round.candidates[idx];
-    const cat = CATEGORIES.find((c) => c.key === old.categoryKey) || CATEGORIES.find((c) => c.label === old.categoryLabel);
     const s = state();
-    const src = placeSource();
-    if (!cat || !src.type) throw new AppError(409, '바꿀 수 있는 다른 가게가 없습니다.');
-    const origin = round.origin;
-    const radius = round.radius || s.settings.radius;
-    // 이번 투표가 카카오를 섞어 뽑은 것이면 바꿀 때도 섞는다
-    const poolFor = poolForSource(round.source === 'mixed' && src.type === 'list' && kakaoEnabled() ? 'mixed' : src.type, src, origin, radius);
-    const exclude = reviews.excludedIds(s.reviews, reviews.ratingFilter(s.settings));
-    for (const c of round.candidates) exclude.add(c.id);
-    const others = round.candidates.filter((c, i) => i !== idx && c.categoryKey === cat.key);
-    const next = await pickReplacement(s, cat, origin, radius, poolFor, { exclude, others });
-    if (!next) throw new AppError(409, '바꿀 수 있는 다른 가게가 없습니다.');
-    next.menus = s.menus[next.id] || next.menus || [];
+    let next;
+    if (req.body?.placeId || req.body?.place) {
+      // 직접 고르기: 목록의 가게(placeId) 또는 직접 입력한 가게({ name, category, cuisine })
+      const item = req.body.placeId ? { id: String(req.body.placeId) } : req.body.place;
+      if (item.id && !basePlaces().some((p) => p.id === item.id)) throw new AppError(404, '저장된 목록에 없는 가게입니다.');
+      [next] = manualCandidates([item]);
+      if (round.candidates.some((c, i) => i !== idx && c.id === next.id)) throw new AppError(409, '이미 후보에 있는 가게입니다.');
+    } else {
+      // 랜덤: 같은 카테고리에서 지금 후보들과 겹치지 않는 가게
+      const cat = CATEGORIES.find((c) => c.key === old.categoryKey) || CATEGORIES.find((c) => c.label === old.categoryLabel);
+      const src = placeSource();
+      if (!cat || !src.type) throw new AppError(409, '바꿀 수 있는 다른 가게가 없습니다.');
+      const origin = round.origin;
+      const radius = round.radius || s.settings.radius;
+      // 이번 투표가 카카오를 섞어 뽑은 것이면 바꿀 때도 섞는다
+      const poolFor = poolForSource(round.source === 'mixed' && src.type === 'list' && kakaoEnabled() ? 'mixed' : src.type, src, origin, radius);
+      const exclude = reviews.excludedIds(s.reviews, reviews.ratingFilter(s.settings));
+      for (const c of round.candidates) exclude.add(c.id);
+      const others = round.candidates.filter((c, i) => i !== idx && c.categoryKey === cat.key);
+      next = await pickReplacement(s, cat, origin, radius, poolFor, { exclude, others });
+      if (!next) throw new AppError(409, '바꿀 수 있는 다른 가게가 없습니다.');
+      next.menus = s.menus[next.id] || next.menus || [];
+    }
     round.candidates[idx] = next;
     // 바뀐 후보에 들어온 표는 취소하고, 동점 뽑기 결과도 다시 정하게 한다
     let removed = 0;
@@ -836,6 +846,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
         cuisine: p.cuisine || '',
         address: p.address,
         menus: (s.menus[p.id] || p.menus || []).length,
+        menuText: (s.menus[p.id] || p.menus || []).join(' '), // 메뉴 이름으로도 검색할 수 있게
         rating: reviews.placeRating(s.reviews[p.id]),
       })),
     });

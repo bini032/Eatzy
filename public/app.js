@@ -1145,7 +1145,7 @@
     const q = $('manualSearch').value.trim().toLowerCase();
     const selectedIds = new Set(manualSelected.map((p) => p.id).filter(Boolean));
     const matches = manualPlaces.filter(
-      (p) => !q || [p.name, p.address, p.category, p.cuisine, catName(p.category)].some((v) => String(v || '').toLowerCase().includes(q))
+      (p) => !q || [p.name, p.address, p.category, p.cuisine, p.menuText, catName(p.category)].some((v) => String(v || '').toLowerCase().includes(q))
     );
     const shown = matches.slice(0, 30);
     $('manualResults').innerHTML = shown.length
@@ -1357,15 +1357,82 @@
     const btn = e.target.closest('[data-replace]');
     if (!btn || !data.round) return;
     const c = data.round.candidates.find((x) => x.id === btn.dataset.replace);
-    if (!c) return;
+    if (c) openReplace(c);
+  });
+
+  // 후보 바꾸기 창: 같은 카테고리에서 랜덤으로, 또는 목록에서 검색해 고르거나 직접 입력한 가게로
+  let replaceTarget = null;
+  let replacePlaces = [];
+  async function openReplace(c) {
+    replaceTarget = c;
     const votes = data.round.counts[c.id] || 0;
-    if (!confirm(votes ? t('card.replaceConfirmVotes', { name: c.name, n: votes }) : t('card.replaceConfirm', { name: c.name }))) return;
-    withBusy(async () => {
-      const res = await api(`/api/rounds/${data.round.id}/candidates/${encodeURIComponent(c.id)}/replace`, { method: 'POST', body: {} });
+    $('replaceTitle').textContent = t('replace.title', { name: c.name });
+    $('replaceNote').textContent = votes ? t('replace.votes', { n: votes }) : t('replace.desc');
+    $('replaceSearch').value = '';
+    $('replaceCustom').reset();
+    $('replaceCustom').category.value = c.categoryLabel || '한식';
+    $('replaceError').hidden = true;
+    $('replaceResults').innerHTML = '';
+    $('replaceDialog').showModal();
+    try {
+      replacePlaces = (await api('/api/place-list')).places;
+    } catch (err) {
+      replacePlaces = [];
+    }
+    renderReplaceResults();
+  }
+  function renderReplaceResults() {
+    if (!replaceTarget) return;
+    const q = $('replaceSearch').value.trim().toLowerCase();
+    const taken = new Set(data.round.candidates.map((x) => x.id));
+    // 검색어가 없으면 바꾸는 후보와 같은 카테고리 가게를 먼저 보여 준다
+    const matches = replacePlaces
+      .filter((p) => !taken.has(p.id))
+      .filter((p) => (q ? [p.name, p.address, p.cuisine, p.menuText, catName(p.category)].some((v) => String(v || '').toLowerCase().includes(q)) : p.category === replaceTarget.categoryLabel));
+    const shown = matches.slice(0, 40);
+    $('replaceResults').innerHTML = shown.length
+      ? shown
+          .map(
+            (p) => `<li><button type="button" data-replace-pick="${esc(p.id)}">
+              <span><strong>${esc(p.name)}</strong> ${p.rating ? `<span class="star-text">★ ${p.rating.avg.toFixed(1)}</span>` : ''} <small>${esc(catLabel(p.category, p.cuisine))}${p.address ? ` · ${esc(p.address)}` : ''}</small></span>
+              <span class="check-mark">→</span></button></li>`
+          )
+          .join('') + (matches.length > shown.length ? `<li class="muted small-text">${esc(t('manual.more', { n: matches.length - shown.length }))}</li>` : '')
+      : `<li class="muted small-text">${esc(t('manual.noMatch'))}</li>`;
+  }
+  async function doReplace(body) {
+    const c = replaceTarget;
+    if (!c) return;
+    $('replaceError').hidden = true;
+    try {
+      const res = await api(`/api/rounds/${data.round.id}/candidates/${encodeURIComponent(c.id)}/replace`, { method: 'POST', body });
+      $('replaceDialog').close();
+      replaceTarget = null;
       applyRound(res.round);
       showMessage(t('card.replaced', { from: res.replaced.from, to: res.replaced.to }));
-    });
+    } catch (err) {
+      if (err.code === 'closed') {
+        $('replaceDialog').close();
+        return showClosed();
+      }
+      $('replaceError').textContent = err.message;
+      $('replaceError').hidden = false;
+    }
+  }
+  $('replaceSearch').addEventListener('input', renderReplaceResults);
+  $('replaceRandom').addEventListener('click', () => doReplace({}));
+  $('replaceResults').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-replace-pick]');
+    if (btn) doReplace({ placeId: btn.dataset.replacePick });
   });
+  $('replaceCustom').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const name = f.name.value.trim();
+    if (!name) return f.name.focus();
+    doReplace({ place: { name, category: f.category.value } });
+  });
+  $('replaceCancel').addEventListener('click', () => $('replaceDialog').close());
 
   $('drawBtn').addEventListener('click', () =>
     withBusy(async () => {
@@ -1943,7 +2010,7 @@
   }
   refresh();
   setInterval(() => {
-    const dialogOpen = ['userDialog', 'menuDialog', 'noticeDialog', 'placeDialog', 'enterDialog', 'reviewDialog', 'mapDialog'].some((id) => $(id).open);
+    const dialogOpen = ['userDialog', 'menuDialog', 'noticeDialog', 'placeDialog', 'enterDialog', 'reviewDialog', 'mapDialog', 'replaceDialog'].some((id) => $(id).open);
     if (!busy && !noGroup && !document.hidden && !dialogOpen) refresh();
   }, POLL_MS);
   document.addEventListener('visibilitychange', () => {

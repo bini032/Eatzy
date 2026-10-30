@@ -1521,3 +1521,47 @@ test('카카오 섞기: 저장 목록과 카카오 실시간 결과로 뽑고, �
     t.close();
   }
 });
+
+test('후보 바꾸기 직접 고르기: 목록의 가게나 직접 입력한 가게로 바꾸고, 이미 후보인 가게는 안 된다', async () => {
+  const places = [
+    { name: '직접한식A', category: '한식' },
+    { name: '직접한식B', category: '한식' },
+    { name: '직접일식', category: '세계음식', cuisine: '일식' },
+    { name: '직접중식', category: '세계음식', cuisine: '중식' },
+    { name: '직접분식', category: '분식', menus: ['라면 5,000원'] },
+    { name: '직접분식2', category: '분식' },
+  ];
+  const t = await setup({ noKakao: true, places });
+  try {
+    const { round } = (await t.call('POST', '/api/rounds', {})).body;
+    const korean = round.candidates.find((c) => c.categoryKey === 'korean');
+    const snack = round.candidates.find((c) => c.categoryKey === 'snack');
+    const list = (await t.call('GET', '/api/place-list')).body.places;
+    const otherSnack = list.find((p) => p.category === '분식' && p.id !== snack.id);
+    const url = `/api/rounds/${round.id}/candidates/${korean.id}/replace`;
+
+    // 이미 후보인 가게로는 못 바꾼다
+    let r = await t.call('POST', url, { placeId: snack.id }, { 'x-admin-key': 'hs' });
+    assert.equal(r.status, 409);
+    // 다른 카테고리 가게도 고를 수 있고, 그 가게 카테고리로 표시된다
+    r = await t.call('POST', url, { placeId: otherSnack.id }, { 'x-admin-key': 'hs' });
+    assert.equal(r.status, 200);
+    const replaced = r.body.round.candidates.find((c) => c.id === otherSnack.id);
+    assert.equal(replaced.categoryKey, 'snack');
+    assert.ok(!r.body.round.candidates.some((c) => c.id === korean.id));
+
+    // 직접 입력한 가게로 바꾸면 목록에도 저장된다
+    r = await t.call('POST', `/api/rounds/${round.id}/candidates/${otherSnack.id}/replace`, { place: { name: '새로운국밥', category: '한식' } }, { 'x-admin-key': 'hs' });
+    assert.equal(r.status, 200);
+    assert.ok(r.body.round.candidates.some((c) => c.name === '새로운국밥' && c.categoryKey === 'korean'));
+    assert.ok((await t.call('GET', '/api/place-list')).body.places.some((p) => p.name === '새로운국밥'));
+
+    // 팀원은 못 한다, 없는 가게 번호는 안 된다
+    r = await t.call('POST', `/api/rounds/${round.id}/candidates/${snack.id}/replace`, { voterId: V1, placeId: list[0].id });
+    assert.equal(r.status, 403);
+    r = await t.call('POST', `/api/rounds/${round.id}/candidates/${snack.id}/replace`, { placeId: 'nope' }, { 'x-admin-key': 'hs' });
+    assert.equal(r.status, 404);
+  } finally {
+    t.close();
+  }
+});
