@@ -335,7 +335,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     const voters = Object.fromEntries(round.candidates.map((c) => [c.id, []]));
     for (const raw of Object.values(round.votes)) {
       const v = readVote(raw);
-      if (voters[v.candidateId]) voters[v.candidateId].push({ name: v.name, menus: v.menus });
+      for (const p of v.picks) if (voters[p.candidateId]) voters[p.candidateId].push({ name: v.name, menus: p.menus });
     }
     const orders = round.orders
       ? Object.entries(round.orders).map(([id, o]) => ({ name: o.name, menus: o.menus, mine: id === voterId }))
@@ -682,10 +682,12 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     // 바뀐 후보에 들어온 표는 취소하고, 동점 뽑기 결과도 다시 정하게 한다
     let removed = 0;
     for (const [voter, raw] of Object.entries(round.votes)) {
-      if (readVote(raw).candidateId === old.id) {
-        delete round.votes[voter];
-        removed++;
-      }
+      const v = readVote(raw);
+      const picks = v.picks.filter((p) => p.candidateId !== old.id);
+      if (picks.length === v.picks.length) continue;
+      removed++;
+      if (picks.length) round.votes[voter] = { name: v.name, picks };
+      else delete round.votes[voter];
     }
     round.draw = null;
     store.save();
@@ -697,17 +699,27 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     if (round.status !== 'voting') throw closedError();
     const { voterId, name } = voterFrom(req);
     const candidateId = req.body?.candidateId;
-    // menus: 고른 메뉴 전체 목록 (예전 화면 호환을 위해 menu 하나도 받는다)
+    // menus: 그 가게에서 고른 메뉴 전체 목록 (예전 화면 호환을 위해 menu 하나도 받는다)
     const rawMenus = Array.isArray(req.body?.menus) ? req.body.menus : req.body?.menu ? [req.body.menu] : [];
     const menus = [...new Set(rawMenus.map(String))];
+    // 여러 가게에 투표할 수 있다: candidateId 가게의 표를 넣거나 고치고(remove: true면 그 가게 표만 취소), candidateId가 null이면 내 표 전부 취소
+    const prev = round.votes[voterId] ? readVote(round.votes[voterId]).picks : [];
     if (candidateId === null) {
       delete round.votes[voterId];
     } else {
       const candidate = round.candidates.find((c) => c.id === candidateId);
       if (!candidate) throw new AppError(400, '후보에 없는 가게입니다.');
-      if (menus.length > MAX_MENUS_PER_VOTE) throw new AppError(400, '메뉴는 {n}개까지 고를 수 있습니다.', undefined, { n: MAX_MENUS_PER_VOTE });
-      if (menus.some((m) => !(candidate.menus || []).includes(m))) throw new AppError(400, '이 가게 메뉴에 없는 항목입니다.');
-      round.votes[voterId] = { candidateId, menus, name };
+      let picks = prev.filter((p) => p.candidateId !== candidateId);
+      if (!req.body?.remove) {
+        if (menus.length > MAX_MENUS_PER_VOTE) throw new AppError(400, '메뉴는 {n}개까지 고를 수 있습니다.', undefined, { n: MAX_MENUS_PER_VOTE });
+        if (menus.some((m) => !(candidate.menus || []).includes(m))) throw new AppError(400, '이 가게 메뉴에 없는 항목입니다.');
+        // 후보 순서대로 둔다
+        picks = [...picks, { candidateId, menus }].sort(
+          (a, b) => round.candidates.findIndex((c) => c.id === a.candidateId) - round.candidates.findIndex((c) => c.id === b.candidateId)
+        );
+      }
+      if (picks.length) round.votes[voterId] = { name, picks };
+      else delete round.votes[voterId];
     }
     store.save();
     res.json({ round: publicRound(round, voterId) });
@@ -731,7 +743,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     // 목록에서 빠진 메뉴를 고른 표는 가게 투표만 남기고 메뉴는 미정으로 돌린다.
     for (const [voter, raw] of Object.entries(round.votes)) {
       const v = readVote(raw);
-      if (v.candidateId === candidate.id) round.votes[voter] = { ...v, menus: v.menus.filter((m) => menus.includes(m)) };
+      round.votes[voter] = { name: v.name, picks: v.picks.map((p) => (p.candidateId === candidate.id ? { ...p, menus: p.menus.filter((m) => menus.includes(m)) } : p)) };
     }
     if (round.winner && round.winner.id === candidate.id) {
       round.winner.menus = menus;
@@ -769,10 +781,14 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
       store.save();
       return res.json({ round: publicRound(round, voterId) });
     }
-    // 같은 가게에 이미 투표했다면 고른 메뉴에 추가, 아니면 이 가게 + 이 메뉴로 투표
-    const prev = round.votes[voterId] ? readVote(round.votes[voterId]) : null;
-    const kept = prev && prev.candidateId === candidate.id ? prev.menus.filter((m) => m !== menu) : [];
-    round.votes[voterId] = { candidateId: candidate.id, menus: [...kept, menu].slice(-MAX_MENUS_PER_VOTE), name };
+    // 이 가게에 이미 투표했다면 고른 메뉴에 추가, 아니면 이 가게 표를 하나 더한다 (다른 가게 표는 그대로)
+    const prev = round.votes[voterId] ? readVote(round.votes[voterId]).picks : [];
+    const mine = prev.find((p) => p.candidateId === candidate.id);
+    const kept = mine ? mine.menus.filter((m) => m !== menu) : [];
+    const picks = [...prev.filter((p) => p.candidateId !== candidate.id), { candidateId: candidate.id, menus: [...kept, menu].slice(-MAX_MENUS_PER_VOTE) }].sort(
+      (a, b) => round.candidates.findIndex((c) => c.id === a.candidateId) - round.candidates.findIndex((c) => c.id === b.candidateId)
+    );
+    round.votes[voterId] = { name, picks };
     store.save();
     res.json({ round: publicRound(round, voterId) });
   });
@@ -1063,7 +1079,8 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
     round.orders = {};
     for (const [id, raw] of Object.entries(round.votes)) {
       const v = readVote(raw);
-      if (v.candidateId === winner.id && v.menus.length) round.orders[id] = { name: v.name, menus: v.menus };
+      const pick = v.picks.find((p) => p.candidateId === winner.id);
+      if (pick && pick.menus.length) round.orders[id] = { name: v.name, menus: pick.menus };
     }
     const estimate = estimateTotal(t.menuCounts[winner.id]);
     round.winner = {
@@ -1088,7 +1105,7 @@ function createApp({ store, adminKey, defaultPlaceQuery, defaultOrigin, placesFi
       voters: Object.values(round.votes)
         .map(readVote)
         .filter((v) => v.name)
-        .map((v) => ({ name: v.name, candidateId: v.candidateId })),
+        .map((v) => ({ name: v.name, candidateIds: v.picks.map((p) => p.candidateId) })),
     });
     // 약 2년치 보관 (하루 1회 기준)
     if (s.history.length > 730) s.history = s.history.slice(-730);

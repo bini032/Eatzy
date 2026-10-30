@@ -46,7 +46,8 @@ function buildStats(history, month, categories) {
       const key = v.name.toLowerCase();
       const p = people.get(key) || { name: v.name, rounds: 0, wins: 0 };
       p.rounds++;
-      if (v.candidateId === w.id) p.wins++;
+      // 여러 가게에 투표했다면 그중 하나가 결정되면 적중 (예전 기록은 candidateId 하나)
+      if ((v.candidateIds || [v.candidateId]).includes(w.id)) p.wins++;
       people.set(key, p);
     }
 

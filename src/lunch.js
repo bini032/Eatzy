@@ -181,10 +181,15 @@ function stripWinner(w) {
 
 // 투표 값: { candidateId, menus: [...] } (메뉴 여러 개 선택 가능)
 // 예전 형식(가게 id 문자열, { menu: '하나' })도 읽을 수 있게 맞춘다
+// 투표 값: { name, picks: [{ candidateId, menus: [...] }] } — 한 사람이 여러 가게에 투표할 수 있다 (가게마다 1표)
+// 예전 형식(가게 id 문자열, { candidateId, menus }, { menu: '하나' })도 읽을 수 있게 맞춘다
 function readVote(v) {
-  if (typeof v === 'string') return { candidateId: v, menus: [], name: '' };
+  if (typeof v === 'string') return { name: '', picks: [{ candidateId: v, menus: [] }] };
+  if (Array.isArray(v.picks)) {
+    return { name: v.name || '', picks: v.picks.map((p) => ({ candidateId: p.candidateId, menus: Array.isArray(p.menus) ? p.menus : [] })) };
+  }
   const menus = Array.isArray(v.menus) ? v.menus : v.menu ? [v.menu] : [];
-  return { candidateId: v.candidateId, menus, name: v.name || '' };
+  return { name: v.name || '', picks: v.candidateId ? [{ candidateId: v.candidateId, menus }] : [] };
 }
 
 function tally(round) {
@@ -192,11 +197,12 @@ function tally(round) {
   // 가게별 메뉴 선택 수(한 사람이 여러 메뉴를 고르면 각각 센다). 메뉴를 고르지 않은 사람은 "" 키로 센다.
   const menuCounts = Object.fromEntries(round.candidates.map((c) => [c.id, {}]));
   for (const raw of Object.values(round.votes)) {
-    const { candidateId, menus } = readVote(raw);
-    if (!(candidateId in counts)) continue;
-    counts[candidateId]++;
-    for (const key of menus.length ? menus : ['']) {
-      menuCounts[candidateId][key] = (menuCounts[candidateId][key] || 0) + 1;
+    for (const { candidateId, menus } of readVote(raw).picks) {
+      if (!(candidateId in counts)) continue;
+      counts[candidateId]++;
+      for (const key of menus.length ? menus : ['']) {
+        menuCounts[candidateId][key] = (menuCounts[candidateId][key] || 0) + 1;
+      }
     }
   }
   const max = Math.max(0, ...Object.values(counts));
@@ -211,7 +217,7 @@ function tally(round) {
   return {
     counts,
     menuCounts,
-    totalVotes: Object.keys(round.votes).length,
+    totalVotes: Object.keys(round.votes).length, // 투표한 사람 수 (한 사람이 여러 가게에 투표해도 1)
     tiedIds: top.length > 1 ? top : [],
     needsDraw: top.length > 1 && leaderId === null,
     leaderId,

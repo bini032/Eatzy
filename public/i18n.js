@@ -74,8 +74,9 @@ window.EATZY_I18N = {
 
     'round.vote': '투표하기',
     'round.result': '투표 결과',
-    'round.total': '총 {n}표',
-    'round.myChoice': '내 선택: {name} / {menus}',
+    'round.total': '{n}명 투표',
+    'round.myChoices': "내 선택: {list}",
+    'vote.multi': "{n}개의 가게에 투표되었습니다",
     'round.undecided': '메뉴 미정',
     'round.meta.origin': '기준: {name} · 반경 {r} · ',
     'round.meta.started': '{time} 시작',
@@ -134,7 +135,7 @@ window.EATZY_I18N = {
 
     'decision.eyebrow': '🎉 오늘의 점심이 결정됐어요',
     'decision.about': '약 {d}',
-    'decision.votes': '득표 {v}표 / 총 {t}표',
+    'decision.votes': '득표 {v}표 / 투표한 사람 {t}명',
     'decision.byDraw': ' · 동점 랜덤 뽑기로 결정',
     'decision.estimate': '💰 예상 총액 {total}',
     'decision.go': '🧭 찾아가기 (네이버 지도)',
@@ -444,8 +445,9 @@ window.EATZY_I18N = {
 
     'round.vote': 'Vote',
     'round.result': 'Results',
-    'round.total': '{n} votes',
-    'round.myChoice': 'My pick: {name} / {menus}',
+    'round.total': '{n} voted',
+    'round.myChoices': "My picks: {list}",
+    'vote.multi': "You voted for {n} places",
     'round.undecided': 'menu undecided',
     'round.meta.origin': 'Base: {name} · radius {r} · ',
     'round.meta.started': 'started {time}',
@@ -504,7 +506,7 @@ window.EATZY_I18N = {
 
     'decision.eyebrow': "🎉 Today's lunch is decided",
     'decision.about': 'about {d}',
-    'decision.votes': '{v} of {t} votes',
+    'decision.votes': '{v} votes · {t} people voted',
     'decision.byDraw': ' · decided by random draw',
     'decision.estimate': '💰 Estimated total {total}',
     'decision.go': '🧭 Directions (Naver Map)',
@@ -814,8 +816,9 @@ window.EATZY_I18N = {
 
     'round.vote': '投票する',
     'round.result': '投票結果',
-    'round.total': '合計{n}票',
-    'round.myChoice': '私の選択: {name} / {menus}',
+    'round.total': '{n}人が投票',
+    'round.myChoices': "私の選択：{list}",
+    'vote.multi': "{n}店に投票しました",
     'round.undecided': 'メニュー未定',
     'round.meta.origin': '基準: {name} · 半径{r} · ',
     'round.meta.started': '{time} 開始',
@@ -874,7 +877,7 @@ window.EATZY_I18N = {
 
     'decision.eyebrow': '🎉 今日のランチが決まりました',
     'decision.about': '約{d}',
-    'decision.votes': '得票 {v}票 / 合計 {t}票',
+    'decision.votes': '得票 {v}票 / 投票者 {t}人',
     'decision.byDraw': ' · 同点のためランダム抽選で決定',
     'decision.estimate': '💰 予想合計 {total}',
     'decision.go': '🧭 道案内（Naverマップ）',
@@ -1184,8 +1187,9 @@ window.EATZY_I18N = {
 
     'round.vote': '投票',
     'round.result': '投票结果',
-    'round.total': '共{n}票',
-    'round.myChoice': '我的选择：{name} / {menus}',
+    'round.total': '{n} 人已投票',
+    'round.myChoices': "我的选择：{list}",
+    'vote.multi': "已为 {n} 家餐厅投票",
     'round.undecided': '菜品未定',
     'round.meta.origin': '基准：{name} · 半径{r} · ',
     'round.meta.started': '{time} 开始',
@@ -1244,7 +1248,7 @@ window.EATZY_I18N = {
 
     'decision.eyebrow': '🎉 今天的午餐定了',
     'decision.about': '约{d}',
-    'decision.votes': '得票 {v}票 / 共 {t}票',
+    'decision.votes': '得票 {v}票 / 投票人数 {t}人',
     'decision.byDraw': ' · 平票后随机抽选决定',
     'decision.estimate': '💰 预计总额 {total}',
     'decision.go': '🧭 去这里（Naver 地图）',

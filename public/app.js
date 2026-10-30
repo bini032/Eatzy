@@ -345,6 +345,30 @@
     return json;
   }
 
+  // 잠깐 떴다 사라지는 알림 (예: 여러 가게에 투표했을 때)
+  let toastTimer = null;
+  function toast(text) {
+    const el = $('toast');
+    el.textContent = text;
+    el.hidden = false;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      el.classList.remove('show');
+      el.hidden = true;
+    }, 2500);
+  }
+
+  // 내가 이 가게에 투표했는지 (여러 가게에 투표할 수 있다): { candidateId, menus } 또는 null
+  function myPick(round, cid) {
+    return (round && round.myVote && round.myVote.picks.find((p) => p.candidateId === cid)) || null;
+  }
+  // 투표 후 2곳 이상에 투표 중이면 알림
+  function notifyMultiVote(round) {
+    const n = round && round.myVote ? round.myVote.picks.length : 0;
+    if (n > 1) toast(t('vote.multi', { n }));
+  }
+
   function showMessage(text, isError = false) {
     const el = $('message');
     if (!text) {
@@ -575,7 +599,7 @@
   function menuBlock(c, round, done) {
     const menus = c.menus || [];
     const counts = (round.menuCounts && round.menuCounts[c.id]) || {};
-    const myMenus = round.myVote && round.myVote.candidateId === c.id ? round.myVote.menus : [];
+    const myMenus = (myPick(round, c.id) || {}).menus || [];
     let html = '';
     if (menus.length) {
       const chips = done
@@ -609,13 +633,17 @@
     const done = round.status === 'done';
     $('roundTitle').textContent = done ? t('round.result') : t('round.vote');
     $('voteSummary').textContent = t('round.total', { n: round.totalVotes });
-    const myCandidate = round.myVote && round.candidates.find((c) => c.id === round.myVote.candidateId);
-    const myMenus = round.myVote ? round.myVote.menus : [];
+    // 내 선택: 여러 가게에 투표했으면 가게마다 "가게 (메뉴)"로
+    const myPicks = ((round.myVote && round.myVote.picks) || [])
+      .map((p) => ({ c: round.candidates.find((c) => c.id === p.candidateId), menus: p.menus }))
+      .filter((p) => p.c);
+    const myMenus = myPicks.flatMap((p) => p.menus);
     const myTotal = totalText(myMenus);
-    $('myChoice').textContent = myCandidate
-      ? t('round.myChoice', { name: myCandidate.name, menus: myMenus.length ? myMenus.join(', ') : t('round.undecided') }) + (myTotal ? ` · ${myTotal}` : '')
+    $('myChoice').textContent = myPicks.length
+      ? t('round.myChoices', { list: myPicks.map((p) => `${p.c.name} (${p.menus.length ? p.menus.join(', ') : t('round.undecided')})`).join(' · ') }) +
+        (myTotal ? ` · ${myTotal}` : '')
       : '';
-    $('myChoice').hidden = !myCandidate;
+    $('myChoice').hidden = !myPicks.length;
     $('roundMeta').textContent =
       (round.source === 'manual' ? t('round.meta.manual') : '') +
       (round.origin ? t('round.meta.origin', { name: originLabel(round.origin), r: formatDistance(round.radius) }) : '') +
@@ -627,7 +655,7 @@
       $('candidates').innerHTML = round.candidates
         .map((c) => {
           const count = round.counts[c.id] || 0;
-          const mine = Boolean(round.myVote && round.myVote.candidateId === c.id);
+          const mine = Boolean(myPick(round, c.id));
           const leader = round.leaderId === c.id;
           const voters = ((round.voters && round.voters[c.id]) || []).map((v) => v.name).filter(Boolean);
           return `
@@ -1235,12 +1263,15 @@
     const candidateId = btn.dataset.vote;
     const round = data.round;
     withBusy(async () => {
+      // 여러 가게에 투표할 수 있다: 이미 투표한 가게면 그 가게 표만 취소, 아니면 이 가게에 1표 더
+      const mine = Boolean(myPick(round, candidateId));
       const res = await api(`/api/rounds/${round.id}/vote`, {
         method: 'POST',
-        body: { candidateId: round.myVote && round.myVote.candidateId === candidateId ? null : candidateId },
+        body: mine ? { candidateId, remove: true } : { candidateId, menus: [] },
       });
       applyRound(res.round);
       showMessage('');
+      if (!mine) notifyMultiVote(res.round);
     });
   });
 
@@ -1252,12 +1283,14 @@
     const c = round.candidates.find((x) => x.id === chip.dataset.cid);
     const menu = c && c.menus[Number(chip.dataset.menu)];
     if (!menu) return;
-    const current = round.myVote && round.myVote.candidateId === c.id ? round.myVote.menus : [];
+    const pick = myPick(round, c.id);
+    const current = pick ? pick.menus : [];
     const menus = current.includes(menu) ? current.filter((m) => m !== menu) : [...current, menu];
     withBusy(async () => {
       const res = await api(`/api/rounds/${round.id}/vote`, { method: 'POST', body: { candidateId: c.id, menus } });
       applyRound(res.round);
       showMessage('');
+      if (!pick) notifyMultiVote(res.round);
     });
   });
 

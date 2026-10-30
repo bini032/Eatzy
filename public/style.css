@@ -299,6 +299,27 @@ span.chip { height: 28px; background: hsl(var(--secondary)); }
 .replace-dialog .replace-or { margin: 16px 0 6px; }
 .replace-dialog #replaceSearch { width: 100%; margin-bottom: 8px; }
 .replace-dialog .manual-results { max-height: 240px; }
+.toast {
+  position: fixed;
+  width: max-content;
+  text-align: center;
+  left: 50%;
+  bottom: 24px;
+  z-index: 1000;
+  max-width: calc(100vw - 32px);
+  padding: 10px 16px;
+  border-radius: 9999px;
+  background: hsl(var(--foreground));
+  color: hsl(var(--background));
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.2);
+  transform: translate(-50%, 8px);
+  opacity: 0;
+  transition: opacity 0.2s, transform 0.2s;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
 .draw-admin { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 
 .complete-row { margin-top: 20px; display: flex; justify-content: flex-end; }
