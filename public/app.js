@@ -127,6 +127,12 @@
     btn.title = session ? t('user.change') : t('user.login');
     $('completeBtn').hidden = isDefaultGroup || !isAdmin() || !data || !data.round || data.round.status !== 'voting';
     $('adminSection').hidden = isDefaultGroup || !isAdmin();
+    $('groupAdminSection').hidden = isDefaultGroup || !isAdmin();
+    // 왼쪽 메뉴: 관리자 항목은 관리자에게만, 전체 현황은 SB에게만
+    for (const el of document.querySelectorAll('#drawer [data-admin]')) el.hidden = isDefaultGroup || !isAdmin();
+    $('drawer').querySelector('[data-super]').hidden = !isSuper();
+    $('drawerAdminLabel').hidden = !isSuper() && (isDefaultGroup || !isAdmin());
+    if (data && !allowedView(currentView)) showView('vote');
     $('enterBanner').hidden = !isDefaultGroup;
     $('overviewSection').hidden = !isSuper();
     const group = data && data.group;
@@ -269,6 +275,63 @@
     if (!isDefaultGroup) openUserDialog(true, t('user.sessionExpired'));
   }
 
+  // ---------- 화면 구분: 투표(기본) / 통계 / 관리자 메뉴 (☰ 왼쪽 메뉴로 이동, 주소의 #stats 등으로 기억) ----------
+  let currentView = 'vote';
+  function allowedView(v) {
+    if (v === 'vote' || v === 'stats') return true;
+    if (v === 'places' || v === 'group') return !isDefaultGroup && isAdmin();
+    if (v === 'overview') return isSuper();
+    return false;
+  }
+  function showView(v, { remember = true } = {}) {
+    if (!allowedView(v)) v = 'vote';
+    currentView = v;
+    document.documentElement.dataset.view = v;
+    for (const el of document.querySelectorAll('#drawer [data-go]')) el.setAttribute('aria-current', el.dataset.go === v ? 'page' : 'false');
+    if (remember) history.replaceState(null, '', location.pathname + (v === 'vote' ? '' : `#${v}`));
+    if (v === 'places') {
+      if ($('adminDetails').open) loadAdmin();
+      else $('adminDetails').open = true; // 여는 순간 목록을 불러온다
+    }
+    if (v === 'group') {
+      if ($('groupAdminDetails').open) loadGroupAdmin();
+      else $('groupAdminDetails').open = true;
+    }
+    if (v === 'stats' && data) loadStats();
+    if (v === 'overview' && data) loadOverview();
+    closeDrawer();
+    window.scrollTo(0, 0);
+  }
+  function openDrawer() {
+    $('drawer').hidden = false;
+    $('drawerBackdrop').hidden = false;
+    requestAnimationFrame(() => $('drawer').classList.add('open'));
+    $('menuBtn').setAttribute('aria-expanded', 'true');
+    const cur = $('drawer').querySelector('[aria-current="page"]');
+    (cur || $('drawerClose')).focus();
+  }
+  function closeDrawer() {
+    if ($('drawer').hidden) return;
+    $('drawer').classList.remove('open');
+    $('drawerBackdrop').hidden = true;
+    $('menuBtn').setAttribute('aria-expanded', 'false');
+    setTimeout(() => {
+      if (!$('drawer').classList.contains('open')) $('drawer').hidden = true;
+    }, 200);
+  }
+  $('menuBtn').addEventListener('click', () => ($('drawer').hidden ? openDrawer() : closeDrawer()));
+  $('drawerClose').addEventListener('click', closeDrawer);
+  $('drawerBackdrop').addEventListener('click', closeDrawer);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('drawer').hidden) closeDrawer();
+  });
+  $('drawer').addEventListener('click', (e) => {
+    const item = e.target.closest('[data-go]');
+    if (item) showView(item.dataset.go);
+  });
+  document.documentElement.dataset.view = 'vote';
+  let viewRestored = false; // 처음 상태를 받은 뒤 주소의 #화면으로 이동 (관리자 여부를 알아야 하므로)
+
   // ---------- 기본 주소(입구 화면): 로그인·언어·테마·전체 현황 말고는 누르면 "그룹으로 입장해 주세요" ----------
   function showEnterGroup() {
     if (!$('enterDialog').open) $('enterDialog').showModal();
@@ -282,7 +345,7 @@
   $('enterDialogCreate').addEventListener('click', openCreateGroup);
   $('enterCreateBtn').addEventListener('click', openCreateGroup);
 
-  const ALLOWED_ON_ENTRY = '#userBtn, #langSelect, #themeBtn, #groupSwitch, #overviewSection, dialog, #enterBanner, .footer';
+  const ALLOWED_ON_ENTRY = '#userBtn, #langSelect, #themeBtn, #groupSwitch, #menuBtn, #drawer, #statsSection, #overviewSection, dialog, #enterBanner, .footer';
   function blockedOnEntry(el) {
     if (!isDefaultGroup || !el || !el.closest) return false;
     const control = el.closest('button, a, select, input, textarea, summary, label, [data-pop], .chip');
@@ -767,6 +830,11 @@
   async function refresh() {
     try {
       data = await api('/api/state');
+      if (!viewRestored) {
+        viewRestored = true;
+        const want = location.hash.slice(1);
+        if (want && want !== 'vote') setTimeout(() => showView(want, { remember: false }), 0);
+      }
       if (data.me && (!session || session.id !== data.me.id)) restoreSession(data.me);
       if (session && !data.me) return sessionExpired();
       render();

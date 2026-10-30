@@ -299,6 +299,43 @@ span.chip { height: 28px; background: hsl(var(--secondary)); }
 .replace-dialog .replace-or { margin: 16px 0 6px; }
 .replace-dialog #replaceSearch { width: 100%; margin-bottom: 8px; }
 .replace-dialog .manual-results { max-height: 240px; }
+/* ---------- 화면 구분 (☰ 메뉴) ---------- */
+:root[data-view="vote"] main [data-view]:not([data-view="vote"]),
+:root[data-view="stats"] main [data-view]:not([data-view="stats"]),
+:root[data-view="places"] main [data-view]:not([data-view="places"]),
+:root[data-view="group"] main [data-view]:not([data-view="group"]),
+:root[data-view="overview"] main [data-view]:not([data-view="overview"]) { display: none !important; }
+.brand-row { display: flex; align-items: center; gap: 8px; }
+.menu-btn { font-size: 18px; }
+/* 메뉴로 여는 관리 화면은 접기 없이 제목만 보여 준다 */
+.view-section > details > summary { pointer-events: none; list-style: none; font-size: 18px; font-weight: 700; margin-bottom: 12px; }
+.view-section > details > summary::-webkit-details-marker { display: none; }
+.drawer-backdrop { position: fixed; inset: 0; z-index: 900; background: rgb(0 0 0 / 0.35); }
+.drawer {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 950;
+  width: min(280px, 82vw);
+  padding: 16px 12px;
+  overflow-y: auto;
+  background: hsl(var(--background));
+  border-right: 1px solid hsl(var(--border));
+  box-shadow: 4px 0 24px rgb(0 0 0 / 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transform: translateX(-100%);
+  transition: transform 0.2s ease;
+}
+.drawer.open { transform: translateX(0); }
+.drawer[hidden] { display: none !important; }
+.drawer-head { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 12px; font-size: 20px; }
+.drawer-item { width: 100%; justify-content: flex-start; height: 44px; padding: 0 12px; border: 0; box-shadow: none; background: transparent; font-size: 15px; font-weight: 500; }
+.drawer-item:hover { background: hsl(var(--secondary)); }
+.drawer-item[aria-current="page"] { background: hsl(var(--secondary)); font-weight: 700; }
+.drawer-sep { margin: 12px 12px 4px; font-size: 12px; font-weight: 600; color: hsl(var(--muted-foreground)); }
 .toast {
   position: fixed;
   width: max-content;
@@ -597,3 +634,6 @@ dialog h3 { font-size: 18px; }
 .rating-form { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid hsl(var(--border)); }
 .rating-form-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .rating-form-row select { width: auto; flex: 1 1 140px; }
+/* 메뉴로 여는 관리 화면은 접기 표시(▾/▴) 없이 */
+.view-section > details > summary::after { content: none !important; }
+.view-section > details > summary { font-size: 18px; font-weight: 700; }

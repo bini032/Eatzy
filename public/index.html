@@ -18,7 +18,10 @@
   <main class="wrap">
     <header class="top">
       <div class="brand">
-        <h1>Eatzy<span class="brand-dot">.</span></h1>
+        <div class="brand-row">
+          <button id="menuBtn" class="ghost small icon-btn menu-btn" type="button" data-i18n-aria="nav.open" aria-label="메뉴 열기" aria-controls="drawer" aria-expanded="false">☰</button>
+          <h1>Eatzy<span class="brand-dot">.</span></h1>
+        </div>
         <p class="sub" data-i18n="app.subtitle">오늘 점심, 다같이 정해요</p>
         <p id="groupBadge" class="group-badge" hidden></p>
         <select id="groupSwitch" class="group-switch" data-i18n-aria="group.switch" aria-label="그룹 이동" hidden></select>
@@ -49,7 +52,7 @@
       <button id="enterCreateBtn" class="primary small" type="button" data-i18n="enter.create">👑 새 그룹 만들기</button>
     </div>
 
-    <section class="panel" id="locationPanel">
+    <section class="panel" id="locationPanel" data-view="vote">
       <div class="loc-row">
         <div class="loc-info">
           <span class="label" data-i18n="loc.label">기준 위치</span>
@@ -69,16 +72,16 @@
       <p id="sourceInfo" class="muted small-text source-info"></p>
     </section>
 
-    <section id="decision" class="decision" hidden></section>
+    <section id="decision" class="decision" data-view="vote" hidden></section>
 
-    <div class="find-row">
+    <div class="find-row" data-view="vote">
       <button id="findBtn" class="primary" type="button"></button>
       <label id="includeLastRow" class="check include-last" hidden><input type="checkbox" id="includeLast" checked /> <span id="includeLastText"></span></label>
       <label id="includeKakaoRow" class="check include-last" hidden><input type="checkbox" id="includeKakao" checked /> <span data-i18n="find.includeKakao">카카오맵 실시간 검색 결과도 후보에 섞기</span></label>
       <button id="manualBtn" class="ghost" type="button" data-i18n="manual.btn">✋ 후보 직접 고르기</button>
     </div>
 
-    <section id="manualPanel" class="panel manual" hidden>
+    <section id="manualPanel" class="panel manual" data-view="vote" hidden>
       <div class="manual-head">
         <h3 data-i18n="manual.title">후보 직접 고르기</h3>
         <button id="manualClose" class="ghost small" type="button" data-i18n="manual.close">닫기</button>
@@ -106,7 +109,7 @@
     <div id="message" class="message" role="status" hidden></div>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-    <section id="roundSection" hidden>
+    <section id="roundSection" data-view="vote" hidden>
       <div class="round-head">
         <h2 id="roundTitle"></h2>
         <span id="voteSummary" class="muted"></span>
@@ -129,12 +132,12 @@
       </div>
     </section>
 
-    <section id="historySection" hidden>
+    <section id="historySection" data-view="vote" hidden>
       <h2 data-i18n="history.title">최근 결정</h2>
       <ul id="history" class="history"></ul>
     </section>
 
-    <section id="statsSection" class="stats">
+    <section id="statsSection" class="stats" data-view="stats">
       <div class="stats-head">
         <h2 data-i18n="stats.title">📊 통계</h2>
         <select id="statsMonth" data-i18n-aria="stats.period" aria-label="통계 기간"></select>
@@ -184,7 +187,7 @@
       </div>
     </section>
 
-    <section class="panel overview" id="overviewSection" hidden>
+    <section class="panel overview view-section" id="overviewSection" data-view="overview" hidden>
       <details id="overviewDetails" open>
         <summary data-i18n="ov.title">🌐 전체 현황 (SB)</summary>
         <div id="ovTiles" class="tiles"></div>
@@ -195,7 +198,7 @@
       </details>
     </section>
 
-    <section class="panel admin" id="adminSection" hidden>
+    <section class="panel admin view-section" id="groupAdminSection" data-view="group" hidden>
       <details id="groupAdminDetails" class="group-admin">
         <summary data-i18n="gadmin.title">👥 그룹 현황·관리자</summary>
         <p id="gaError" class="error" hidden></p>
@@ -210,6 +213,9 @@
         <h3 class="admin-subhead" data-i18n="gadmin.members">이 그룹을 쓴 사람</h3>
         <ul id="gaMembers" class="ga-list"></ul>
       </details>
+    </section>
+
+    <section class="panel admin view-section" id="adminSection" data-view="places" hidden>
       <details id="adminDetails">
         <summary data-i18n="admin.title">🔧 가게 관리 (관리자)</summary>
         <p id="adminError" class="error" hidden></p>
@@ -267,6 +273,21 @@
       <span>© SBComms · v{{BUILD}}</span>
     </footer>
   </main>
+
+  <!-- 왼쪽 메뉴 (☰ 버튼으로 열고 닫음) -->
+  <div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
+  <nav id="drawer" class="drawer" data-i18n-aria="nav.label" aria-label="메뉴" hidden>
+    <div class="drawer-head">
+      <strong>Eatzy<span class="brand-dot">.</span></strong>
+      <button id="drawerClose" class="ghost small icon-btn" type="button" data-i18n-aria="nav.close" aria-label="메뉴 닫기">✕</button>
+    </div>
+    <button class="drawer-item" type="button" data-go="vote" data-i18n="nav.vote">🗳️ 투표</button>
+    <button class="drawer-item" type="button" data-go="stats" data-i18n="nav.stats">📊 통계</button>
+    <p id="drawerAdminLabel" class="drawer-sep" data-i18n="nav.admin" hidden>관리자</p>
+    <button class="drawer-item" type="button" data-go="places" data-admin hidden data-i18n="nav.places">🔧 가게 관리</button>
+    <button class="drawer-item" type="button" data-go="group" data-admin hidden data-i18n="nav.group">👥 그룹 현황·관리자</button>
+    <button class="drawer-item" type="button" data-go="overview" data-super hidden data-i18n="nav.overview">🌐 전체 현황 (SB)</button>
+  </nav>
 
   <dialog id="userDialog">
     <form id="userForm">
