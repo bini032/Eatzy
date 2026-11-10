@@ -272,7 +272,69 @@ h3 {
   margin: 0 auto;
 }
 .pitch-wrap.edit {
-  max-width: calc((100dvh - 200px) * 74 / 111);
+  max-width: calc((100dvh - 250px) * 74 / 111);
+}
+
+/* 선수 명단 이름표 (끌어서 동그라미에 놓기) */
+.bench {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px 0 8px;
+  scrollbar-width: none;
+}
+.bench-empty {
+  margin: 0 0 6px;
+}
+.chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 10px;
+  border-radius: 18px;
+  background: var(--home);
+  color: #fff;
+  font-size: 14px;
+  white-space: nowrap;
+  touch-action: pan-x; /* 옆으로 밀면 목록 스크롤, 아래로 끌면 이름표 끌기 */
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+}
+.chip b {
+  font-size: 12px;
+  background: #ffffff33;
+  border-radius: 10px;
+  padding: 0 5px;
+}
+.chip small {
+  font-size: 11px;
+  opacity: 0.85;
+}
+.chip.used {
+  background: #24456f;
+  color: #c9d6ea;
+}
+.chip.picked {
+  outline: 3px solid var(--accent);
+}
+.chip.ghost {
+  position: fixed;
+  z-index: 30;
+  pointer-events: none;
+  transform: translate(-50%, -130%);
+  box-shadow: 0 6px 16px #0008;
+  outline: 2px solid var(--accent);
+}
+
+.slot button.who {
+  text-align: left;
+  min-height: 38px;
+  padding: 6px 10px;
+}
+.slot button.who small {
+  color: var(--muted);
 }
 svg.pitch {
   display: block;
@@ -465,8 +527,13 @@ dialog label {
   font-size: 14px;
   color: var(--muted);
 }
-dialog label input {
+dialog label input,
+dialog label select,
+dialog label textarea {
   margin-top: 4px;
+}
+dialog input:disabled {
+  opacity: 0.6;
 }
 label.check {
   display: flex;
@@ -490,4 +557,17 @@ label.check input {
   font-size: 14px;
   z-index: 20;
   max-width: calc(100vw - 32px);
+}
+
+.bulk {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+}
+.bulk summary {
+  cursor: pointer;
+  font-weight: 700;
+  padding: 4px 0;
 }

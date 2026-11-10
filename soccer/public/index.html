@@ -38,6 +38,23 @@
       </form>
     </dialog>
 
+    <dialog id="tokenDlg">
+      <form method="dialog" id="tokenForm">
+        <h2 id="tokTitle">선수 지정</h2>
+        <label id="tokPlayerWrap">명단에서 고르기<select id="tokPlayer"></select></label>
+        <div class="row">
+          <label style="width:90px">번호<input id="tokNum" type="number" inputmode="numeric" min="0" max="99" /></label>
+          <label class="grow">이름<input id="tokName" maxlength="12" /></label>
+        </div>
+        <label>포지션<input id="tokPos" maxlength="6" /></label>
+        <label id="tokRoleWrap">역할 메모<textarea id="tokRole" rows="2" maxlength="300"></textarea></label>
+        <div class="row end">
+          <button type="button" id="tokCancel" class="ghost">취소</button>
+          <button type="submit" class="primary">확인</button>
+        </div>
+      </form>
+    </dialog>
+
     <script src="formations.js"></script>
     <script src="app.js"></script>
   </body>

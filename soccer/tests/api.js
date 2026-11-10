@@ -79,6 +79,8 @@ test('전술 수정: 입력값을 정리하고, 다른 사람이 먼저 고쳤�
     { kind: 'dribble', owner: 'h5', withBall: true, points: [[1, 1]] }, // 점 하나는 버린다
   ];
   edited.scenes.push({ title: '2단계' });
+  edited.lineup[3] = { pos: 'CB', name: '용병 김씨', number: '23' };
+  edited.awayLineup[9] = { pos: 'ST', name: '상대 에이스', number: 10 };
   const r = await s.call('PUT', `/api/strategies/${strategy.id}`, { body: { baseRev: 1, strategy: edited }, key: KEY });
   assert.equal(r.status, 200);
   const saved = r.body.strategy;
@@ -90,6 +92,8 @@ test('전술 수정: 입력값을 정리하고, 다른 사람이 먼저 고쳤�
   assert.equal(saved.scenes[0].arrows[1].owner, null);
   assert.equal(saved.scenes.length, 2);
   assert.equal(saved.scenes[1].home.length, 11);
+  assert.deepEqual(saved.lineup[3], { pos: 'CB', playerId: null, name: '용병 김씨', number: 23, role: '' });
+  assert.deepEqual(saved.awayLineup[9], { pos: 'ST', name: '상대 에이스', number: 10 });
 
   const stale = await s.call('PUT', `/api/strategies/${strategy.id}`, { body: { baseRev: 1, strategy: edited }, key: KEY });
   assert.equal(stale.status, 409);
@@ -116,6 +120,8 @@ test('선수단 저장, 지운 선수는 라인업에서도 빠진다, 파일에
   assert.equal(strategy.lineup[0].playerId, gk.id);
   assert.equal(strategy.lineup[10].role, '침투');
   assert.equal(strategy.lineup[5].playerId, null);
+  assert.equal(strategy.awayLineup.length, 11);
+  assert.equal(strategy.awayLineup[0].pos, 'GK');
 
   await s.call('PUT', '/api/team', { body: { name: '우리FC', players: [gk] }, key: KEY });
   const after = (await s.call('GET', '/api/state')).body.strategies[0];

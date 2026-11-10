@@ -50,6 +50,7 @@
     draw: null,
     play: null,
     speed: 1,
+    pick: null, // 명단에서 눌러 고른 선수 id (동그라미를 누르면 배정)
     roster: null, // 선수단 편집 사본
     rosterDirty: false,
   };
@@ -272,13 +273,17 @@
     if (last) {
       body.formation = last.formation;
       body.awayFormation = last.awayFormation;
-      body.lineup = last.lineup.map((l) => ({ pos: l.pos, playerId: l.playerId, role: '' }));
+      body.lineup = last.lineup.map((l) => ({ pos: l.pos, playerId: l.playerId, name: l.name, number: l.number, role: '' }));
+      body.awayLineup = last.awayLineup;
     } else {
-      // 첫 전술: 선수단을 등번호 순으로 채운다 (골키퍼 포지션 선수가 있으면 GK 자리에)
+      // 첫 전술: 주 포지션이 같은 자리에만 자동 배정하고, 나머지는 명단에서 끌어다 놓는다
       const players = [...S.doc.team.players].sort((a, b) => (a.number ?? 999) - (b.number ?? 999));
-      const gk = players.find((p) => p.pos === 'GK');
-      const rest = players.filter((p) => p !== gk);
-      body.lineup = F.positions(F.DEFAULT, 'home').map((d, i) => ({ pos: d.pos, playerId: (i === 0 ? gk : rest[gk ? i - 1 : i])?.id || null, role: '' }));
+      const used = new Set();
+      body.lineup = F.positions(F.DEFAULT, 'home').map((d) => {
+        const p = players.find((x) => !used.has(x.id) && x.pos === d.pos);
+        if (p) used.add(p.id);
+        return { pos: d.pos, playerId: p ? p.id : null, role: '' };
+      });
     }
     try {
       const r = await api('POST', 'api/strategies', body);
@@ -293,13 +298,38 @@
 
   // ---------- 전술 화면 ----------
   function current() {
+    let st;
     if (isEditor()) {
       const base = strategyById(S.route.id);
       if (!S.work && base) S.work = clone(base);
-      return S.work;
-    }
-    return strategyById(S.route.id);
+      st = S.work;
+    } else st = strategyById(S.route.id);
+    return st && fillAway(st);
   }
+
+  // 상대 팀 이름표가 생기기 전에 만든 전술은 포메이션 기본값으로 채운다
+  function fillAway(st) {
+    if (!Array.isArray(st.awayLineup) || st.awayLineup.length !== 11) {
+      st.awayLineup = F.positions(st.awayFormation, 'away').map((d) => ({ pos: d.pos, name: '', number: null }));
+    }
+    return st;
+  }
+
+  // 동그라미 하나의 표시 정보. 우리 팀은 명단 선수 > 직접 적은 이름 순서
+  function tokenInfo(st, k, pm) {
+    const i = +k.slice(1);
+    if (k[0] === 'a') {
+      const a = st.awayLineup[i];
+      return { pos: a.pos, number: a.number ?? null, name: a.name || '', role: '' };
+    }
+    const l = st.lineup[i];
+    const p = l.playerId ? pm.get(l.playerId) : null;
+    return p
+      ? { pos: l.pos, number: p.number ?? null, name: p.name, role: l.role, player: p }
+      : { pos: l.pos, number: l.number ?? null, name: l.name || '', role: l.role };
+  }
+
+  const nameText = (t) => (t.name ? `${t.number != null ? '#' + t.number + ' ' : ''}${t.name}` : t.number != null ? `#${t.number}` : '');
 
   function renderStrategy() {
     const st = current();
@@ -324,6 +354,7 @@
         ${ed ? '<button id="addScene" title="지금 장면에서 동선대로 움직인 다음 장면을 만듭니다">+ 장면</button>' : ''}
       </div>
       ${ed ? toolBar() : ''}
+      ${ed ? benchHtml(st) : ''}
 
       <div class="pitch-wrap${ed ? ' edit' : ''}"><svg id="pitch" class="pitch ${ed ? 'editable' : ''}" viewBox="-3 -3 74 111" xmlns="http://www.w3.org/2000/svg">${fieldSvg()}<g id="dyn"></g></svg></div>
       <div class="legend">
@@ -372,6 +403,22 @@
       <p class="hint tool-hint" id="toolHint">${toolHint()}</p>`;
   }
 
+  // 선수 명단 이름표: 끌어서 우리 팀 동그라미에 놓거나, 누른 뒤 동그라미를 누르면 배정
+  function benchHtml(st) {
+    const players = [...S.doc.team.players].sort((a, b) => (a.number ?? 999) - (b.number ?? 999));
+    if (!players.length) return '<p class="hint bench-empty">선수단 탭에서 명단을 먼저 등록하면 이름표를 끌어다 동그라미에 놓을 수 있습니다.</p>';
+    const slotOf = new Map(st.lineup.map((l, i) => [l.playerId, i]));
+    // 아직 자리가 없는 선수를 앞에 둔다
+    players.sort((a, b) => (slotOf.has(a.id) ? 1 : 0) - (slotOf.has(b.id) ? 1 : 0));
+    return `<div class="bench" id="bench">${players
+      .map((p) => {
+        const i = slotOf.get(p.id);
+        const cls = ['chip', i != null ? 'used' : '', S.pick === p.id ? 'picked' : ''].join(' ');
+        return `<span class="${cls}" data-pid="${p.id}">${p.number != null ? `<b>${p.number}</b>` : ''}${esc(p.name)}${i != null ? `<small>${esc(st.lineup[i].pos)}</small>` : ''}</span>`;
+      })
+      .join('')}</div>`;
+  }
+
   function editorPanel(st, sc) {
     const opts = (sel) => F.NAMES.map((n) => `<option ${n === sel ? 'selected' : ''}>${n}</option>`).join('');
     return `
@@ -399,21 +446,14 @@
   }
 
   function slotHtml(l, i, ed, pm, st) {
-    const p = l.playerId && pm.get(l.playerId);
+    const t = tokenInfo(st, 'h' + i, pm);
+    const who = nameText(t);
     if (!ed) {
-      return `<div class="slot"><div class="pos">${esc(l.pos)}</div><div>${p ? `${p.number != null ? '#' + p.number + ' ' : ''}<b>${esc(p.name)}</b>` : '<span class="hint">미배정</span>'}</div>${l.role ? `<div class="role">${esc(l.role)}</div>` : ''}</div>`;
+      return `<div class="slot"><div class="pos">${esc(l.pos)}</div><div>${who ? `<b>${esc(who)}</b>` : '<span class="hint">미배정</span>'}</div>${l.role ? `<div class="role">${esc(l.role)}</div>` : ''}</div>`;
     }
-    const used = new Map(st.lineup.map((x, j) => [x.playerId, j]));
-    const players = [...S.doc.team.players].sort((a, b) => (a.number ?? 999) - (b.number ?? 999));
     return `<div class="slot">
       <div class="pos"><input data-pos="${i}" maxlength="6" value="${esc(l.pos)}" aria-label="포지션" /></div>
-      <select data-player="${i}"><option value="">— 미배정 —</option>${players
-        .map((pl) => {
-          const j = used.get(pl.id);
-          const mark = j != null && j !== i ? ` (${st.lineup[j].pos} 자리)` : '';
-          return `<option value="${pl.id}" ${pl.id === l.playerId ? 'selected' : ''}>${pl.number != null ? '#' + pl.number + ' ' : ''}${esc(pl.name)}${pl.pos ? ' · ' + esc(pl.pos) : ''}${esc(mark)}</option>`;
-        })
-        .join('')}</select>
+      <button type="button" class="who" data-slot="${i}">${who ? `<b>${esc(who)}</b>${t.player ? '' : ' <small>(직접 입력)</small>'}` : '<span class="hint">눌러서 선수 지정</span>'}</button>
       <textarea data-role="${i}" rows="1" maxlength="300" placeholder="역할 메모 (예: 오버래핑 자제, 세트피스 키커)">${esc(l.role)}</textarea>
     </div>`;
   }
@@ -488,18 +528,75 @@
       changed();
       if (t.dataset.pos != null) drawDyn();
     };
-    lineup.onchange = (e) => {
-      const t = e.target;
-      if (t.dataset.player == null) return;
-      pushUndo();
-      const i = +t.dataset.player;
-      const id = t.value || null;
-      // 다른 자리에 있던 선수를 고르면 그 자리는 비운다
-      if (id) for (const l of S.work.lineup) if (l.playerId === id) l.playerId = null;
-      S.work.lineup[i].playerId = id;
-      changed();
-      renderStrategy();
+    lineup.onclick = (e) => {
+      const b = e.target.closest('[data-slot]');
+      if (b) openTokenDlg('h' + b.dataset.slot);
     };
+    bindBench();
+  }
+
+  // 선수를 우리 팀 i번 자리에 배정. 이미 다른 자리에 있던 선수면 두 자리를 맞바꾼다
+  function assignPlayer(i, pid) {
+    const lineup = S.work.lineup;
+    if (lineup[i].playerId === pid) return;
+    pushUndo();
+    const j = lineup.findIndex((l) => l.playerId === pid);
+    if (j >= 0) lineup[j].playerId = lineup[i].playerId;
+    lineup[i].playerId = pid;
+    lineup[i].name = '';
+    lineup[i].number = null;
+    changed();
+    const p = playersById().get(pid);
+    toast(`${p ? p.name : '선수'} → ${lineup[i].pos} 자리${j >= 0 ? ' (자리 맞바꿈)' : ''}`);
+  }
+
+  function bindBench() {
+    const bench = $('#bench');
+    if (!bench) return;
+    let d = null; // { pid, x, y, el, ghost }
+    bench.addEventListener('pointerdown', (e) => {
+      const chip = e.target.closest('.chip');
+      if (!chip || S.play) return;
+      d = { pid: chip.dataset.pid, x: e.clientX, y: e.clientY, el: chip, ghost: null };
+      chip.setPointerCapture(e.pointerId);
+    });
+    bench.addEventListener('pointermove', (e) => {
+      if (!d) return;
+      if (!d.ghost) {
+        if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < 8) return;
+        d.ghost = d.el.cloneNode(true);
+        d.ghost.classList.add('ghost');
+        document.body.appendChild(d.ghost);
+      }
+      d.ghost.style.left = e.clientX + 'px';
+      d.ghost.style.top = e.clientY + 'px';
+      e.preventDefault();
+    });
+    const finish = (e, cancelled) => {
+      if (!d) return;
+      const cur = d;
+      d = null;
+      if (cur.ghost) {
+        cur.ghost.remove();
+        if (cancelled) return;
+        // 놓은 곳에서 가장 가까운 우리 팀 동그라미
+        const svg = $('#pitch');
+        const r = svg.getBoundingClientRect();
+        if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
+        const k = nearest(S.work.scenes[S.scene], svgPoint(svg, e), 6, (k) => k[0] === 'h');
+        if (!k) return toast('우리 팀(파란) 동그라미 위에 놓으세요.');
+        S.pick = null;
+        assignPlayer(+k.slice(1), cur.pid);
+        renderStrategy();
+      } else if (!cancelled) {
+        // 누르기만 했으면 선택 → 동그라미를 누르면 배정
+        S.pick = S.pick === cur.pid ? null : cur.pid;
+        for (const c of document.querySelectorAll('#bench .chip')) c.classList.toggle('picked', c.dataset.pid === S.pick);
+        if (S.pick) toast('이제 우리 팀 동그라미를 누르세요.');
+      }
+    };
+    bench.addEventListener('pointerup', (e) => finish(e, false));
+    bench.addEventListener('pointercancel', (e) => finish(e, true));
   }
 
   function copyLink() {
@@ -561,7 +658,10 @@
     if (side === 'home') {
       st.formation = name;
       st.lineup.forEach((l, i) => (l.pos = ps[i].pos));
-    } else st.awayFormation = name;
+    } else {
+      st.awayFormation = name;
+      st.awayLineup.forEach((l, i) => (l.pos = ps[i].pos));
+    }
     changed();
     renderStrategy();
   }
@@ -663,21 +763,36 @@
     if (k === 'ball') {
       return `<g class="token"><circle cx="${x}" cy="${y}" r="0.95" fill="#fff" stroke="#111" stroke-width="0.25"/><circle cx="${x}" cy="${y}" r="0.35" fill="#111"/></g>`;
     }
-    const i = +k.slice(1);
     const home = k[0] === 'h';
-    const posLabel = home ? st.lineup[i].pos : F.positions(st.awayFormation, 'away')[i].pos;
-    const gk = posLabel === 'GK';
+    const t = tokenInfo(st, k, pm);
+    const gk = t.pos === 'GK';
     const fill = home ? (gk ? 'var(--home-gk)' : 'var(--home)') : gk ? 'var(--away-gk)' : 'var(--away)';
-    const player = home && st.lineup[i].playerId ? pm.get(st.lineup[i].playerId) : null;
-    const inner = player && player.number != null ? String(player.number) : posLabel;
-    const fs = inner.length > 2 ? 1.25 : 1.9;
-    const below = home ? (player ? player.name : posLabel) : '';
+    const posText = t.pos || '?';
+    const fs = posText.length > 2 ? 1.15 : 1.5;
     const sel = S.drag && S.drag.key === k ? ' selected' : '';
+    // 이름(또는 번호)을 정하면 동그라미 아래에 "번호 이름" 이름표를 붙인다
+    let tag = '';
+    const name = (t.name || '').slice(0, 6);
+    if (name || t.number != null) {
+      const num = t.number != null ? String(t.number) : '';
+      const TF = 1.5;
+      const w = (textWidth(num) + (num && name ? 0.4 : 0) + textWidth(name)) * TF + 1.4;
+      const ty = y + 3.75;
+      tag = `<rect x="${(x - w / 2).toFixed(2)}" y="${(ty - 1.35).toFixed(2)}" width="${w.toFixed(2)}" height="1.95" rx="0.95" fill="rgba(8,22,14,0.82)" stroke="${home ? 'rgba(120,170,255,0.7)' : 'rgba(255,140,140,0.7)'}" stroke-width="0.12"/>
+      <text x="${x}" y="${ty}" text-anchor="middle" font-size="${TF}" fill="#fff">${num ? `<tspan fill="#ffd54a" font-weight="700">${num}</tspan>${name ? ' ' : ''}` : ''}${esc(name)}</text>`;
+    }
     return `<g class="token${sel}">
       <circle class="body" cx="${x}" cy="${y}" r="2.1" style="fill:${fill}" stroke="#fff" stroke-width="0.3"/>
-      <text x="${x}" y="${y + fs * 0.36}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="#fff">${esc(inner)}</text>
-      ${below ? `<text class="label" x="${x}" y="${y + 3.9}" text-anchor="middle" font-size="1.6" fill="#fff">${esc(below.slice(0, 6))}</text>` : ''}
+      <text x="${x}" y="${y + fs * 0.36}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="#fff">${esc(posText)}</text>
+      ${tag}
     </g>`;
+  }
+
+  // 이름표 폭 계산용 대략적인 글자 폭 (글자 크기 1 기준)
+  function textWidth(str) {
+    let w = 0;
+    for (const ch of str) w += /[\u0000-\u00ff]/.test(ch) ? 0.6 : 1;
+    return w;
   }
 
   // frame: { pos(k), arrows, arrowOpacity }
@@ -750,7 +865,18 @@
 
   function bindPitch() {
     const svg = $('#pitch');
-    if (!isEditor()) return;
+    if (!isEditor()) {
+      // 보기 모드: 동그라미를 누르면 이름과 역할을 보여 준다
+      svg.addEventListener('click', (e) => {
+        const st = current();
+        if (!st || S.play) return;
+        const k = nearest(st.scenes[S.scene], svgPoint(svg, e), 3.5, (k) => k !== 'ball');
+        if (!k) return;
+        const t = tokenInfo(st, k, playersById());
+        toast(`${k[0] === 'h' ? '우리' : '상대'} ${t.pos}${nameText(t) ? ' · ' + nameText(t) : ''}${t.role ? ' — ' + t.role : ''}`, 4000);
+      });
+      return;
+    }
     const isPlayer = (k) => k !== 'ball';
 
     svg.addEventListener('pointerdown', (e) => {
@@ -761,7 +887,7 @@
         const k = nearest(sc, p, 1.6, (k) => k === 'ball') || nearest(sc, p, 4);
         if (!k) return;
         S.undo.push(JSON.stringify(S.work));
-        S.drag = { key: k, moved: false, off: [getPos(sc, k)[0] - p[0], getPos(sc, k)[1] - p[1]] };
+        S.drag = { key: k, moved: false, start: p, off: [getPos(sc, k)[0] - p[0], getPos(sc, k)[1] - p[1]] };
       } else if (S.tool === 'erase') {
         let hit = -1;
         let best = 2.5;
@@ -807,6 +933,8 @@
       if (!S.drag && !S.draw) return;
       const p = svgPoint(svg, e);
       if (S.drag) {
+        // 손가락이 살짝 흔들린 것은 누르기로 본다
+        if (!S.drag.moved && dist(p, S.drag.start) < 1) return;
         const sc = S.work.scenes[S.scene];
         setPos(sc, S.drag.key, [p[0] + S.drag.off[0], p[1] + S.drag.off[1]]);
         S.drag.moved = true;
@@ -826,7 +954,21 @@
           changed();
           const b = $('#undoBtn');
           if (b) b.disabled = false;
-        } else S.undo.pop();
+        } else {
+          S.undo.pop();
+          const k = S.drag.key;
+          S.drag = null;
+          drawDyn();
+          // 누르기: 이름표를 골라 둔 상태면 배정, 아니면 이름 창
+          if (k === 'ball') return;
+          if (S.pick && k[0] === 'h') {
+            const pid = S.pick;
+            S.pick = null;
+            assignPlayer(+k.slice(1), pid);
+            renderStrategy();
+          } else openTokenDlg(k);
+          return;
+        }
         S.drag = null;
         drawDyn();
       } else if (S.draw) {
@@ -848,6 +990,91 @@
     svg.addEventListener('pointerup', end);
     svg.addEventListener('pointercancel', end);
   }
+
+  // ---------- 동그라미 이름 창 ----------
+  const tokDlg = $('#tokenDlg');
+  let tokKey = null;
+
+  function openTokenDlg(k) {
+    const st = S.work;
+    if (!st) return;
+    tokKey = k;
+    const home = k[0] === 'h';
+    const i = +k.slice(1);
+    const l = home ? st.lineup[i] : st.awayLineup[i];
+    $('#tokTitle').textContent = `${home ? '우리 팀' : '상대 팀'} · ${l.pos} 자리`;
+    $('#tokPlayerWrap').hidden = !home;
+    $('#tokRoleWrap').hidden = !home;
+    if (home) {
+      const players = [...S.doc.team.players].sort((a, b) => (a.number ?? 999) - (b.number ?? 999));
+      const slotOf = new Map(st.lineup.map((x, j) => [x.playerId, j]));
+      $('#tokPlayer').innerHTML =
+        `<option value="">직접 입력 (명단에 없는 선수)</option>` +
+        players
+          .map((p) => {
+            const j = slotOf.get(p.id);
+            const mark = j != null && j !== i ? ` — 지금 ${st.lineup[j].pos} 자리` : '';
+            return `<option value="${p.id}" ${p.id === l.playerId ? 'selected' : ''}>${p.number != null ? '#' + p.number + ' ' : ''}${esc(p.name)}${esc(mark)}</option>`;
+          })
+          .join('');
+      $('#tokRole').value = l.role || '';
+    }
+    $('#tokName').value = l.name || '';
+    $('#tokNum').value = l.number ?? '';
+    $('#tokPos').value = l.pos;
+    syncTokFields();
+    tokDlg.showModal();
+  }
+
+  // 명단 선수를 고르면 이름·번호는 명단 것을 쓴다
+  function syncTokFields() {
+    const p = tokKey && tokKey[0] === 'h' && $('#tokPlayer').value ? playersById().get($('#tokPlayer').value) : null;
+    $('#tokName').disabled = !!p;
+    $('#tokNum').disabled = !!p;
+    if (p) {
+      $('#tokName').value = p.name;
+      $('#tokNum').value = p.number ?? '';
+    }
+  }
+  $('#tokPlayer').onchange = () => {
+    if (!$('#tokPlayer').value) {
+      $('#tokName').value = '';
+      $('#tokNum').value = '';
+    }
+    syncTokFields();
+  };
+  $('#tokCancel').onclick = () => tokDlg.close();
+  $('#tokenForm').onsubmit = (e) => {
+    e.preventDefault();
+    const st = S.work;
+    if (!st || !tokKey) return tokDlg.close();
+    const home = tokKey[0] === 'h';
+    const i = +tokKey.slice(1);
+    const numVal = $('#tokNum').value === '' ? null : Math.max(0, Math.min(99, parseInt($('#tokNum').value, 10) || 0));
+    const pos = $('#tokPos').value.trim().slice(0, 6);
+    if (home) {
+      const pid = $('#tokPlayer').value || null;
+      if (pid) assignPlayer(i, pid);
+      else pushUndo();
+      const l = st.lineup[i];
+      if (!pid) {
+        l.playerId = null;
+        l.name = $('#tokName').value.trim().slice(0, 12);
+        l.number = numVal;
+      }
+      if (pos) l.pos = pos;
+      l.role = $('#tokRole').value.slice(0, 300);
+    } else {
+      pushUndo();
+      const a = st.awayLineup[i];
+      a.name = $('#tokName').value.trim().slice(0, 12);
+      a.number = numVal;
+      if (pos) a.pos = pos;
+    }
+    changed();
+    tokDlg.close();
+    renderStrategy();
+  };
 
   // ---------- 재생 ----------
   function startPlay() {
@@ -984,7 +1211,13 @@
       <h2>팀 이름</h2>
       <input id="teamNameInput" maxlength="40" value="${esc(r.name)}" />
       <div class="row"><h2 class="grow">선수단 ${r.players.length}명</h2><button id="addPlayer">+ 선수 추가</button></div>
-      <p class="hint">등번호 · 이름 · 주 포지션. 전술 화면의 라인업에서 자리마다 선수를 배정합니다.</p>
+      <p class="hint">명단을 먼저 쭉 등록해 두면 전술 화면에서 이름표를 끌어다 동그라미에 놓아 배정합니다.</p>
+      <details class="bulk" ${r.players.length ? '' : 'open'}>
+        <summary>📋 한꺼번에 입력</summary>
+        <p class="hint">한 줄에 한 명씩 “등번호 이름 포지션” (번호·포지션은 빼도 됨). 쉼표로 나눠도 됩니다. 같은 이름이 이미 있으면 번호·포지션만 바꿉니다.</p>
+        <textarea id="bulkText" rows="6" placeholder="1 김골키 GK&#10;4 박수비 CB&#10;10 한공격 ST&#10;이미드"></textarea>
+        <div class="row end" style="margin-top:6px"><button id="bulkAdd" class="primary">명단에 추가하고 저장</button></div>
+      </details>
       <div class="players">${r.players
         .map(
           (p, i) => `<div class="player">
@@ -1032,7 +1265,50 @@
       S.rosterDirty = true;
       renderRoster();
     };
-    $('#saveRoster').onclick = async () => {
+    $('#bulkAdd').onclick = () => {
+      const { added, updated, skipped } = addBulk(r, $('#bulkText').value);
+      if (!added && !updated) return toast('추가할 이름이 없습니다.');
+      saveRoster(`${added}명 추가${updated ? `, ${updated}명 수정` : ''}${skipped ? ` (40명이 넘어 ${skipped}명 제외)` : ''}`);
+    };
+    $('#saveRoster').onclick = () => saveRoster('선수단을 저장했습니다.');
+  }
+
+  // "10 홍길동 ST" 같은 줄들을 명단에 넣는다
+  function addBulk(r, textValue) {
+    let added = 0;
+    let updated = 0;
+    let skipped = 0;
+    for (const line of textValue.split(/[\n,]/)) {
+      const words = line.trim().split(/\s+/).filter(Boolean);
+      let number = null;
+      let pos = '';
+      const rest = [];
+      for (const w of words) {
+        const n = w.match(/^#?(\d{1,2})(번)?$/);
+        const up = w.toUpperCase();
+        if (n && number == null) number = +n[1];
+        else if (!pos && POSITIONS.includes(up)) pos = up;
+        else rest.push(w);
+      }
+      const name = rest.join(' ').slice(0, 20);
+      if (!name) continue;
+      const same = r.players.find((p) => p.name.trim().toLowerCase() === name.toLowerCase());
+      if (same) {
+        if (number != null) same.number = number;
+        if (pos) same.pos = pos;
+        updated++;
+      } else if (r.players.length >= 40) skipped++;
+      else {
+        r.players.push({ id: Math.random().toString(36).slice(2, 12), name, number, pos });
+        added++;
+      }
+    }
+    return { added, updated, skipped };
+  }
+
+  async function saveRoster(doneMsg) {
+    const r = S.roster;
+    {
       const unnamed = r.players.filter((p) => !p.name.trim()).length;
       if (unnamed && !confirm(`이름이 없는 선수 ${unnamed}명은 저장되지 않습니다. 계속할까요?`)) return;
       try {
@@ -1044,12 +1320,12 @@
         S.rosterDirty = false;
         S.work = null;
         render();
-        toast('선수단을 저장했습니다.');
+        toast(doneMsg);
       } catch (err) {
         if (err.status === 401) logout(err.message);
         else toast(err.message);
       }
-    };
+    }
   }
 
   // ---------- 로그인 ----------
@@ -1096,7 +1372,7 @@
   function busy() {
     const a = document.activeElement;
     const typing = a && view.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName);
-    return S.drag || S.draw || S.play || S.dirty || S.saving || S.rosterDirty || typing || dlg.open;
+    return S.drag || S.draw || S.play || S.dirty || S.saving || S.rosterDirty || typing || dlg.open || tokDlg.open;
   }
 
   async function poll() {

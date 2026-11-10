@@ -17,6 +17,12 @@ function text(v, max) {
   return typeof v === 'string' ? v.replace(/\r\n/g, '\n').slice(0, max) : '';
 }
 
+function num(v) {
+  if (v === '' || v == null) return null;
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 0 && n <= 99 ? n : null;
+}
+
 function id(v) {
   return typeof v === 'string' && /^[a-z0-9]{1,24}$/.test(v) ? v : newId();
 }
@@ -70,8 +76,15 @@ function strategy(input, playerIds) {
     return {
       pos: str(l.pos, 6) || d.pos,
       playerId: typeof l.playerId === 'string' && playerIds.has(l.playerId) ? l.playerId : null,
+      name: str(l.name, 12), // 명단에 없는 선수를 이 자리에 직접 적은 이름
+      number: num(l.number),
       role: text(l.role, 300),
     };
+  });
+  const awayIn = Array.isArray(s.awayLineup) ? s.awayLineup : [];
+  const awayLineup = awayDefault.map((d, i) => {
+    const l = awayIn[i] && typeof awayIn[i] === 'object' ? awayIn[i] : {};
+    return { pos: str(l.pos, 6) || d.pos, name: str(l.name, 12), number: num(l.number) };
   });
   const scenesIn = Array.isArray(s.scenes) && s.scenes.length ? s.scenes.slice(0, LIMITS.scenes) : [null];
   return {
@@ -81,6 +94,7 @@ function strategy(input, playerIds) {
     formation,
     awayFormation,
     lineup,
+    awayLineup,
     scenes: scenesIn.map((sc) => scene(sc, homeDefault, awayDefault)),
   };
 }
@@ -93,11 +107,10 @@ function team(input) {
       if (!p || typeof p !== 'object') return null;
       const name = str(p.name, 20);
       if (!name) return null;
-      const n = Number(p.number);
       return {
         id: id(p.id),
         name,
-        number: p.number !== '' && p.number != null && Number.isInteger(n) && n >= 0 && n <= 99 ? n : null,
+        number: num(p.number),
         pos: str(p.pos, 6),
       };
     })
