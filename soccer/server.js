@@ -18,9 +18,11 @@ const redis =
 const store = new Store(path.join(dataDir, 'state.json'), { redis, teamName: process.env.TEAM_NAME || '우리 팀' });
 
 if (!process.env.EDIT_PASSWORD) {
-  console.log('EDIT_PASSWORD 없음: 편집 비밀번호가 기본값 "soccer"입니다. 배포 전에 꼭 바꾸세요.');
+  console.log('EDIT_PASSWORD 없음: 팀 편집 비밀번호(전략 제시자 등록용)가 기본값 "soccer"입니다. 배포 전에 꼭 바꾸세요.');
 }
-const app = createApp({ store, editPassword: process.env.EDIT_PASSWORD || 'soccer' });
+// 모든 전술을 고칠 수 있는 관리자 이름 (쉼표로 구분, 그 이름의 계정으로 로그인해야 함)
+const adminNames = (process.env.ADMIN_NAMES || '').split(',').map((s) => s.trim()).filter(Boolean);
+const app = createApp({ store, editPassword: process.env.EDIT_PASSWORD || 'soccer', adminNames });
 
 store
   .init()

@@ -571,3 +571,50 @@ label.check input {
   font-weight: 700;
   padding: 4px 0;
 }
+
+.badge {
+  font-size: 11px;
+  background: var(--accent);
+  color: #1a1a1a;
+  border-radius: 8px;
+  padding: 1px 6px;
+  vertical-align: middle;
+  font-weight: 700;
+}
+.notice {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  background: #2a2a12;
+  border: 1px solid #6b5f1f;
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin: 6px 0;
+  font-size: 14px;
+}
+.tpl-list {
+  display: grid;
+  gap: 8px;
+  max-height: 60dvh;
+  overflow-y: auto;
+}
+.tpl {
+  display: grid;
+  gap: 3px;
+  text-align: left;
+  padding: 10px 12px;
+  background: var(--panel-2);
+}
+.tpl span {
+  font-size: 13px;
+  color: #cfe0d5;
+}
+.tpl small {
+  font-size: 12px;
+  color: var(--muted);
+}
+.lock {
+  max-width: 45vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

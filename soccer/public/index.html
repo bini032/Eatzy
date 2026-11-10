@@ -26,16 +26,24 @@
     <dialog id="loginDlg">
       <form method="dialog" id="loginForm">
         <h2>전략 제시자 로그인</h2>
-        <p class="hint">비밀번호를 입력하면 전술을 추가·수정할 수 있습니다. 보기는 누구나 할 수 있습니다.</p>
-        <label>이름 (전술 작성자로 표시)<input id="loginName" maxlength="30" autocomplete="nickname" /></label>
-        <label>편집 비밀번호<input id="loginPass" type="password" autocomplete="current-password" required /></label>
-        <label class="check"><input id="loginRemember" type="checkbox" checked /> 이 기기에서 기억하기</label>
+        <p class="hint">보기는 로그인 없이 누구나 할 수 있습니다. 로그인하면 내 전술을 만들고 고칠 수 있습니다(다른 사람 전술은 복사해서 고칩니다).</p>
+        <label>이름<input id="loginName" maxlength="20" autocomplete="username" required /></label>
+        <label>개인 비밀번호<input id="loginPass" type="password" autocomplete="current-password" required /></label>
+        <label id="teamWrap" hidden>팀 편집 비밀번호 <small>(처음 등록할 때 한 번만, 개인 비밀번호는 4자 이상)</small><input id="loginTeam" type="password" autocomplete="off" /></label>
+        <label class="check"><input id="loginRemember" type="checkbox" checked /> 이 기기에서 로그인 유지</label>
         <p id="loginErr" class="err" hidden></p>
         <div class="row end">
           <button type="button" id="loginCancel" class="ghost">취소</button>
           <button type="submit" class="primary">확인</button>
         </div>
       </form>
+    </dialog>
+
+    <dialog id="tplDlg">
+      <h2>새 전술</h2>
+      <p class="hint">추천 전술을 고르면 장면·동선·메모·역할이 채워진 채로 만들어집니다. 그다음 원하는 대로 고치세요.</p>
+      <div id="tplList" class="tpl-list"></div>
+      <div class="row end" style="margin-top:10px"><button type="button" id="tplCancel" class="ghost">취소</button></div>
     </dialog>
 
     <dialog id="tokenDlg">
@@ -56,6 +64,7 @@
     </dialog>
 
     <script src="formations.js"></script>
+    <script src="templates.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

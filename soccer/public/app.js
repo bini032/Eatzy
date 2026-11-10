@@ -36,8 +36,8 @@
 
   const S = {
     doc: null, // { version, team, strategies }
-    key: local.get('soccer.key'), // 편집 비밀번호 (있으면 편집 가능)
-    name: local.get('soccer.name') || '',
+    key: local.get('soccer.session'), // 로그인 토큰 (전략 제시자)
+    me: null, // { id, name, admin } 서버가 토큰으로 알려 준 내 계정
     route: { view: 'list' },
     work: null, // 편집 중인 전술 사본
     scene: 0,
@@ -55,7 +55,17 @@
     rosterDirty: false,
   };
 
-  const isEditor = () => !!S.key;
+  // 로그인한 전략 제시자 (선수단 편집, 새 전술 만들기)
+  const isEditor = () => !!(S.key && S.me);
+  // 이 전술을 고칠 수 있는지: 만든 사람과 관리자. 계정 전에 만든 전술은 작성자 이름이 같은 사람
+  function canEditSt(st) {
+    if (!isEditor() || !st) return false;
+    if (S.me.admin) return true;
+    if (st.ownerId) return st.ownerId === S.me.id;
+    return (st.author || '').trim().replace(/\s+/g, ' ').toLowerCase() === S.me.id;
+  }
+  // 지금 열린 전술을 편집 중인지
+  const editing = () => !!(S.work && S.route.view === 'strategy' && S.work.id === S.route.id);
   const clone = (o) => JSON.parse(JSON.stringify(o));
   const esc = (s) =>
     String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -72,7 +82,7 @@
   // ---------- 서버 ----------
   async function api(method, url, body, key = S.key) {
     const headers = { 'Content-Type': 'application/json' };
-    if (key) headers['x-edit-key'] = encodeURIComponent(key);
+    if (key) headers['x-session'] = key;
     const res = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, cache: 'no-store' });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -86,6 +96,12 @@
 
   async function loadDoc() {
     S.doc = await api('GET', 'api/state');
+    S.me = S.doc.me || null;
+    // 토큰이 더는 통하지 않으면(로그아웃·서버 초기화) 조용히 보기 모드로
+    if (S.key && !S.me) {
+      S.key = null;
+      local.del('soccer.session');
+    }
   }
 
   function strategyById(id) {
@@ -105,10 +121,12 @@
   }
 
   function logout(msg) {
+    if (S.key) api('POST', 'api/logout').catch(() => {});
     S.key = null;
+    S.me = null;
     S.work = null;
     S.roster = null;
-    local.del('soccer.key');
+    local.del('soccer.session');
     if (msg) toast(msg);
     render();
   }
@@ -223,7 +241,7 @@
     $('#teamName').textContent = S.doc.team.name || '축구 전술 보드';
     document.title = `${S.doc.team.name || '축구'} 전술 보드`;
     const lock = $('#lockBtn');
-    lock.textContent = isEditor() ? '✏️ 편집 중' : '🔒 보기';
+    lock.textContent = isEditor() ? `👤 ${S.me.name}` : '🔒 보기';
     lock.classList.toggle('editing', isEditor());
     const inStrategy = S.route.view === 'strategy';
     $('#backBtn').hidden = !inStrategy;
@@ -252,58 +270,101 @@
           ? `<div class="cards">${list
               .map(
                 (s) => `<a class="card" href="#/s/${s.id}">
-                  <b>${esc(s.title)}</b>
+                  <b>${esc(s.title)}</b>${canEditSt(s) && !S.me.admin ? ' <span class="badge">내 전술</span>' : ''}
                   <div class="meta">${[s.author && esc(s.author), `장면 ${s.scenes.length}개`, `${esc(s.formation)} vs ${esc(s.awayFormation)}`, fmtDate(s.updatedAt)].filter(Boolean).join(' · ')}</div>
                   ${s.memo ? `<div class="memo">${esc(s.memo)}</div>` : ''}
                 </a>`
               )
               .join('')}</div>`
           : `<div class="empty">아직 전술이 없습니다.<br>${
-              isEditor() ? '“+ 새 전술”로 첫 전술을 만들어 보세요.' : '전략 제시자는 오른쪽 위 “🔒 보기”를 눌러 비밀번호를 입력하면 전술을 추가할 수 있습니다.'
+              isEditor() ? '“+ 새 전술”로 첫 전술을 만들어 보세요.' : '전략 제시자는 오른쪽 위 “🔒 보기”를 눌러 로그인하면 전술을 추가할 수 있습니다.'
             }</div>`
       }`;
     const nb = $('#newBtn');
-    if (nb) nb.onclick = createStrategy;
+    if (nb) nb.onclick = openTemplateDlg;
   }
 
-  async function createStrategy() {
-    // 가장 최근 전술의 포메이션과 선수 배정을 이어받는다
-    const last = [...S.doc.strategies].sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))[0];
-    const body = { title: '새 전술', author: S.name };
-    if (last) {
-      body.formation = last.formation;
-      body.awayFormation = last.awayFormation;
-      body.lineup = last.lineup.map((l) => ({ pos: l.pos, playerId: l.playerId, name: l.name, number: l.number, role: '' }));
-      body.awayLineup = last.awayLineup;
-    } else {
-      // 첫 전술: 주 포지션이 같은 자리에만 자동 배정하고, 나머지는 명단에서 끌어다 놓는다
-      const players = [...S.doc.team.players].sort((a, b) => (a.number ?? 999) - (b.number ?? 999));
-      const used = new Set();
-      body.lineup = F.positions(F.DEFAULT, 'home').map((d) => {
-        const p = players.find((x) => !used.has(x.id) && x.pos === d.pos);
-        if (p) used.add(p.id);
-        return { pos: d.pos, playerId: p ? p.id : null, role: '' };
+  // 새 전술의 라인업: 같은 포메이션의 최근 전술 배정을 이어받고, 없으면 주 포지션이 같은 자리에만 배정
+  function lineupFor(formation, roles = {}) {
+    const recent = [...S.doc.strategies].sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+    const same = recent.find((x) => x.formation === formation);
+    const base = F.positions(formation, 'home');
+    if (same) {
+      return base.map((d, i) => {
+        const l = same.lineup[i] || {};
+        return { pos: l.pos || d.pos, playerId: l.playerId || null, name: l.name || '', number: l.number ?? null, role: roles[i] || '' };
       });
     }
+    const players = [...S.doc.team.players].sort((a, b) => (a.number ?? 999) - (b.number ?? 999));
+    const used = new Set();
+    return base.map((d, i) => {
+      const p = players.find((x) => !used.has(x.id) && x.pos === d.pos);
+      if (p) used.add(p.id);
+      return { pos: d.pos, playerId: p ? p.id : null, role: roles[i] || '' };
+    });
+  }
+
+  async function createStrategy(body, msg) {
     try {
       const r = await api('POST', 'api/strategies', body);
       replaceInDoc(r.strategy);
       S.doc.version = r.version;
       location.hash = `#/s/${r.strategy.id}`;
+      if (msg) toast(msg, 3500);
     } catch (err) {
       if (err.status === 401) logout(err.message);
       else toast(err.message);
     }
   }
 
+  // 새 전술: 빈 전술 또는 추천 전술 고르기
+  const tplDlg = $('#tplDlg');
+  function openTemplateDlg() {
+    const items = [{ key: '', title: '빈 전술', summary: '포메이션만 놓인 빈 경기장에서 직접 그리기', formation: '', scenes: 1 }, ...window.Templates.list];
+    $('#tplList').innerHTML = items
+      .map(
+        (t) => `<button type="button" class="tpl" data-key="${t.key}">
+          <b>${t.key ? '⭐ ' : '＋ '}${esc(t.title)}</b>
+          <span>${esc(t.summary)}</span>
+          ${t.key ? `<small>${esc(t.formation)} · 장면 ${t.scenes}개</small>` : ''}
+        </button>`
+      )
+      .join('');
+    tplDlg.showModal();
+  }
+  $('#tplCancel').onclick = () => tplDlg.close();
+  $('#tplList').onclick = (e) => {
+    const b = e.target.closest('.tpl');
+    if (!b) return;
+    tplDlg.close();
+    const key = b.dataset.key;
+    if (!key) {
+      const recent = [...S.doc.strategies].sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))[0];
+      const formation = recent ? recent.formation : F.DEFAULT;
+      return createStrategy({ title: '새 전술', formation, awayFormation: recent ? recent.awayFormation : F.DEFAULT, lineup: lineupFor(formation) });
+    }
+    const t = window.Templates.build(key);
+    createStrategy(
+      { title: t.title, memo: t.memo, formation: t.formation, awayFormation: t.awayFormation, lineup: lineupFor(t.formation, t.roles), scenes: t.scenes },
+      '추천 전술을 만들었습니다. ▶ 재생으로 보고, 원하는 대로 고치세요.'
+    );
+  };
+
+  // 다른 사람 전술을 내 전술로 복사
+  function copyStrategy(st) {
+    const body = clone(st);
+    body.title = `${st.title} (복사)`.slice(0, 60);
+    createStrategy(body, '복사했습니다. 이제 이 전술은 내가 고칠 수 있습니다.');
+  }
+
   // ---------- 전술 화면 ----------
   function current() {
-    let st;
-    if (isEditor()) {
-      const base = strategyById(S.route.id);
-      if (!S.work && base) S.work = clone(base);
+    const base = strategyById(S.route.id);
+    let st = base;
+    if (base && canEditSt(base)) {
+      if (!S.work || S.work.id !== base.id) S.work = clone(base);
       st = S.work;
-    } else st = strategyById(S.route.id);
+    } else if (!S.dirty && !S.saving) S.work = null;
     return st && fillAway(st);
   }
 
@@ -338,7 +399,7 @@
       return;
     }
     S.scene = Math.min(S.scene, st.scenes.length - 1);
-    const ed = isEditor();
+    const ed = editing();
     const sc = st.scenes[S.scene];
     const pm = playersById();
     view.innerHTML = `
@@ -347,6 +408,11 @@
         ${ed ? `<span id="saveStatus" class="status">${S.dirty ? '저장 대기' : '저장됨'}</span>` : ''}
       </div>
       <div class="hint">${[st.author && `작성 ${esc(st.author)}`, `${esc(st.formation)} vs ${esc(st.awayFormation)}`, fmtDate(st.updatedAt)].filter(Boolean).join(' · ')}</div>
+      ${
+        isEditor() && !ed
+          ? `<div class="notice"><span class="grow">작성자(${esc(st.author || '알 수 없음')})만 수정할 수 있습니다.</span><button id="copyBtn" class="primary">복사해서 내 전술로</button></div>`
+          : ''
+      }
 
       <div class="scenes" id="sceneBar">
         <button id="playBtn" class="play">${S.play ? '■ 정지' : '▶ 재생'}</button>
@@ -379,7 +445,7 @@
       <div class="lineup">${st.lineup.map((l, i) => slotHtml(l, i, ed, pm, st)).join('')}</div>
       ${ed && !S.doc.team.players.length ? '<p class="hint">선수단 탭에서 선수를 등록하면 자리마다 선수를 배정할 수 있습니다.</p>' : ''}
 
-      ${ed ? '<div class="row end" style="margin-top:24px"><button id="delStrategy" class="danger">전술 삭제</button></div>' : ''}
+      ${ed ? '<div class="row end" style="margin-top:24px"><button id="copyMine">복사본 만들기</button><button id="delStrategy" class="danger">전술 삭제</button></div>' : ''}
     `;
     bindStrategy(st);
     drawDyn();
@@ -474,8 +540,14 @@
       e.target.textContent = S.speed + 'x';
     };
     $('#linkBtn').onclick = copyLink;
+    const cb = $('#copyBtn');
+    if (cb) cb.onclick = () => copyStrategy(st);
     bindPitch();
-    if (!isEditor()) return;
+    if (!editing()) return;
+    $('#copyMine').onclick = async () => {
+      await saveNow();
+      copyStrategy(S.work);
+    };
 
     const onText = (sel, fn) => {
       const el = $(sel);
@@ -754,7 +826,7 @@
     }[a.kind];
     const d = pathD(a.points);
     return `<g opacity="${opacity}"><path d="${d}" fill="none" ${style} stroke-linejoin="round" marker-end="url(#ah-${a.kind})"/>${
-      S.tool === 'erase' && isEditor() ? `<path d="${d}" fill="none" stroke="transparent" stroke-width="3"/>` : ''
+      S.tool === 'erase' && editing() ? `<path d="${d}" fill="none" stroke="transparent" stroke-width="3"/>` : ''
     }</g>`;
   }
 
@@ -807,8 +879,19 @@
     if (S.draw && S.draw.points.length > 1) html += arrowSvg({ kind: S.draw.kind, points: S.draw.points }, 0.8);
     html += KEYS.filter((k) => k[0] === 'a').map((k) => tokenSvg(k, f.pos(k), pm, st)).join('');
     html += KEYS.filter((k) => k[0] === 'h').map((k) => tokenSvg(k, f.pos(k), pm, st)).join('');
-    html += tokenSvg('ball', f.pos('ball'), pm, st);
+    html += tokenSvg('ball', ballShown(f.pos), pm, st);
     g.innerHTML = html;
+  }
+
+  // 공이 선수와 겹치면 글자를 가리지 않게 그 선수 발밑(오른쪽 아래)에 그린다 (저장 위치는 그대로)
+  function ballShown(posOf) {
+    const ball = posOf('ball');
+    for (const k of KEYS) {
+      if (k === 'ball') continue;
+      const q = posOf(k);
+      if (dist(q, ball) < 1.6) return [q[0] + 1.75, q[1] + 1.35];
+    }
+    return ball;
   }
 
   function svgPoint(svg, e) {
@@ -865,7 +948,7 @@
 
   function bindPitch() {
     const svg = $('#pitch');
-    if (!isEditor()) {
+    if (!editing()) {
       // 보기 모드: 동그라미를 누르면 이름과 역할을 보여 준다
       svg.addEventListener('click', (e) => {
         const st = current();
@@ -884,10 +967,13 @@
       const sc = S.work.scenes[S.scene];
       const p = svgPoint(svg, e);
       if (S.tool === 'move') {
-        const k = nearest(sc, p, 1.6, (k) => k === 'ball') || nearest(sc, p, 4);
+        // 공은 화면에 그려진 자리로 판정한다
+        const bp = ballShown((k) => getPos(sc, k));
+        const k = dist(bp, p) < 1.4 ? 'ball' : nearest(sc, p, 4, isPlayer) || (dist(bp, p) < 4 ? 'ball' : null);
         if (!k) return;
         S.undo.push(JSON.stringify(S.work));
-        S.drag = { key: k, moved: false, start: p, off: [getPos(sc, k)[0] - p[0], getPos(sc, k)[1] - p[1]] };
+        const from = k === 'ball' ? bp : getPos(sc, k);
+        S.drag = { key: k, moved: false, start: p, off: [from[0] - p[0], from[1] - p[1]] };
       } else if (S.tool === 'erase') {
         let hit = -1;
         let best = 2.5;
@@ -1332,35 +1418,44 @@
   const dlg = $('#loginDlg');
   $('#lockBtn').onclick = async () => {
     if (isEditor()) {
-      if (!confirm('편집을 마치고 보기 모드로 바꿀까요? (이 기기에 기억된 비밀번호도 지웁니다)')) return;
+      if (!confirm(`${S.me.name}님, 로그아웃할까요? (보기는 계속 할 수 있습니다)`)) return;
       await saveNow();
-      logout('보기 모드로 바꿨습니다.');
+      logout('로그아웃했습니다.');
       return;
     }
-    $('#loginName').value = S.name;
+    $('#loginName').value = local.get('soccer.lastName') || '';
     $('#loginPass').value = '';
+    $('#loginTeam').value = '';
+    $('#teamWrap').hidden = true;
     $('#loginErr').hidden = true;
-    if (dlg.showModal) dlg.showModal();
-    else dlg.setAttribute('open', '');
-    setTimeout(() => (S.name ? $('#loginPass') : $('#loginName')).focus(), 50);
+    dlg.showModal();
+    setTimeout(() => ($('#loginName').value ? $('#loginPass') : $('#loginName')).focus(), 50);
   };
   $('#loginCancel').onclick = () => dlg.close();
   $('#loginForm').onsubmit = async (e) => {
     e.preventDefault();
-    const pass = $('#loginPass').value;
+    const name = $('#loginName').value.trim();
+    const password = $('#loginPass').value;
+    const teamPassword = $('#teamWrap').hidden ? undefined : $('#loginTeam').value;
     const remember = $('#loginRemember').checked;
+    const box = $('#loginErr');
     try {
-      await api('POST', 'api/login', {}, pass);
-      S.key = pass;
-      S.name = $('#loginName').value.trim();
-      local.set('soccer.key', pass, remember);
-      local.set('soccer.name', S.name);
+      const r = await api('POST', 'api/login', { name, password, teamPassword }, null);
+      S.key = r.token;
+      S.me = r.user;
+      local.del('soccer.session');
+      local.set('soccer.session', r.token, remember);
+      local.set('soccer.lastName', r.user.name);
       dlg.close();
       S.work = null;
-      toast('편집할 수 있습니다.');
+      toast(teamPassword ? `${r.user.name}님 등록했습니다. 다음부터는 이름과 개인 비밀번호만 넣으면 됩니다.` : `${r.user.name}님 로그인했습니다.`, 3500);
       render();
     } catch (err) {
-      const box = $('#loginErr');
+      // 처음 쓰는 이름이면 팀 편집 비밀번호 칸을 보여 준다
+      if (err.data && err.data.needTeamPassword) {
+        $('#teamWrap').hidden = false;
+        if (!teamPassword) setTimeout(() => $('#loginTeam').focus(), 30);
+      }
       box.textContent = err.message;
       box.hidden = false;
     }
@@ -1372,7 +1467,7 @@
   function busy() {
     const a = document.activeElement;
     const typing = a && view.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName);
-    return S.drag || S.draw || S.play || S.dirty || S.saving || S.rosterDirty || typing || dlg.open || tokDlg.open;
+    return S.drag || S.draw || S.play || S.dirty || S.saving || S.rosterDirty || typing || dlg.open || tokDlg.open || tplDlg.open;
   }
 
   async function poll() {

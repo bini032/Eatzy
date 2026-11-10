@@ -1,13 +1,19 @@
 const fs = require('fs');
 const path = require('path');
 
-// 저장 문서 { version, team: { name, players }, strategies: [ { id, rev, createdAt, updatedAt, ...전술 } ] }
+// 저장 문서 {
+//   version, team: { name, players }, strategies: [ { id, rev, ownerId, author, createdAt, updatedAt, ...전술 } ],
+//   users: { [이름 소문자]: { name, salt, hash, createdAt } }, sessions: { [토큰 해시]: { userId, createdAt } }
+// }
 function normalize(raw, teamName) {
   const doc = raw && typeof raw === 'object' ? raw : {};
+  const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
   return {
     version: Number.isInteger(doc.version) ? doc.version : 0,
     team: doc.team && typeof doc.team === 'object' ? doc.team : { name: teamName || '우리 팀', players: [] },
     strategies: Array.isArray(doc.strategies) ? doc.strategies : [],
+    users: obj(doc.users),
+    sessions: obj(doc.sessions),
   };
 }
 
