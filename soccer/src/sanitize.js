@@ -3,7 +3,7 @@ const F = require('../public/formations');
 
 // 화면에서 보낸 값을 그대로 저장하지 않고 허용된 모양으로만 다시 만든다
 const LIMITS = { players: 40, scenes: 30, arrows: 60, points: 80 };
-const KINDS = ['run', 'pass', 'dribble'];
+const KINDS = ['run', 'pass', 'dribble', 'shot'];
 const OWNER = /^(h|a)(10|[0-9])$|^ball$/;
 
 const newId = () => crypto.randomBytes(6).toString('hex');

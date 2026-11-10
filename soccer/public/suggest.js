@@ -52,7 +52,8 @@
       withBall: false,
       points: [pos.ball, ...(via ? [clampP(via)] : []), to[1] < 0 ? [r1(to[0]), r1(to[1])] : clampP(to)].map((p) => [r1(p[0]), r1(p[1])]),
     });
-    return { isGK, field, nearestTo, run, dribble, pass };
+    const shot = (to) => ({ kind: 'shot', owner: 'ball', withBall: false, points: [pos.ball, to].map((p) => [r1(p[0]), r1(p[1])]) });
+    return { isGK, field, nearestTo, run, dribble, pass, shot };
   }
 
   // 지금 상황 판단
@@ -187,7 +188,7 @@
     }
     // 8) 슈팅
     if (d(pos.ball, THEIR_GOAL) < 26 && s.side === 'center') {
-      out.unshift({ title: '슈팅', desc: '골대 구석으로 바로 슈팅.', arrows: [h.pass([pos.ball[0] < 34 ? 37 : 31, -1])] });
+      out.unshift({ title: '슈팅', desc: '골대 구석으로 바로 슈팅.', arrows: [h.shot([pos.ball[0] < 34 ? 37 : 31, -1])] });
     }
     return out;
   }

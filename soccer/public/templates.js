@@ -1,6 +1,6 @@
 // 추천 전술 템플릿. "+ 새 전술"에서 고르면 장면·동선·메모·역할이 채워진 전술이 만들어진다.
 // 좌표는 미터 단위(가로 0~68, 세로 0 = 상대 골라인 ~ 105 = 우리 골라인). 우리 팀은 위로 공격한다.
-// 동선: [종류, 주인, ...점]  종류 run(달리기) / dribble(공과 함께) / pass(공이 이동, 주인 생략 null)
+// 동선: [종류, 주인, ...점]  종류 run(달리기) / dribble(공과 함께) / pass·shot(공이 이동, 주인 생략 null)
 //   시작점은 주인의 현재 위치(패스는 공의 현재 위치)이고, 다음 장면은 동선 끝 위치에서 시작한다.
 (function () {
   const F = window.Formations;
@@ -14,7 +14,7 @@
     const scenes = def.scenes.map((sc) => {
       Object.assign(pos, sc.place || {});
       const arrows = (sc.arrows || []).map(([kind, owner, ...pts]) => {
-        const isPass = kind === 'pass';
+        const isPass = kind === 'pass' || kind === 'shot'; // 공이 주인
         const start = isPass ? pos.ball : pos[owner];
         return {
           kind,
@@ -116,7 +116,7 @@
             ['run', 'a3', [29, 10]],
           ],
         },
-        { title: '마무리', memo: '중앙으로 들어온 ST가 슈팅.', arrows: [['pass', null, [33, -1]]] },
+        { title: '마무리', memo: '중앙으로 들어온 ST가 슈팅.', arrows: [['shot', null, [33, -1]]] },
       ],
     },
     {
@@ -170,7 +170,7 @@
             ['run', 'a2', [38, 13]],
           ],
         },
-        { title: '마무리', memo: '골키퍼와 1대1 슈팅.', arrows: [['pass', null, [31, -1]]] },
+        { title: '마무리', memo: '골키퍼와 1대1 슈팅.', arrows: [['shot', null, [31, -1]]] },
       ],
     },
     {
@@ -222,7 +222,7 @@
           ],
         },
         { title: '컷백 패스', memo: '수비가 붙으면 반대쪽 ST에게 패스.', arrows: [['pass', null, [30, 12]]] },
-        { title: '마무리', memo: '원터치 슈팅.', arrows: [['pass', null, [33, -1]]] },
+        { title: '마무리', memo: '원터치 슈팅.', arrows: [['shot', null, [33, -1]]] },
       ],
     },
     {
@@ -277,7 +277,7 @@
           ],
         },
         { title: '패스', memo: '골키퍼가 나오면 옆의 ST에게.', arrows: [['pass', null, [36, 5]]] },
-        { title: '마무리', memo: '빈 골대로 슈팅.', arrows: [['pass', null, [34, -1]]] },
+        { title: '마무리', memo: '빈 골대로 슈팅.', arrows: [['shot', null, [34, -1]]] },
       ],
     },
     {
@@ -321,7 +321,7 @@
             ['run', 'h5', [26, 18]],
           ],
         },
-        { title: '헤딩 슈팅', memo: '중앙으로 들어온 CB가 헤더.', arrows: [['pass', null, [32, -0.8]]] },
+        { title: '헤딩 슈팅', memo: '중앙으로 들어온 CB가 헤더.', arrows: [['shot', null, [32, -0.8]]] },
       ],
     },
     {

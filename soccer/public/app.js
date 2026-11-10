@@ -5,7 +5,7 @@
   const W = F.W;
   const L = F.L;
   const POSITIONS = ['GK', 'CB', 'LB', 'RB', 'LWB', 'RWB', 'DM', 'CM', 'AM', 'LM', 'RM', 'LW', 'RW', 'ST'];
-  const KIND_LABEL = { run: '달리기', pass: '패스', dribble: '드리블' };
+  const KIND_LABEL = { run: '달리기', pass: '패스', dribble: '드리블', shot: '슛' };
   const SPEEDS = [0.5, 1, 2];
   const KEYS = [...Array.from({ length: 11 }, (_, i) => 'h' + i), ...Array.from({ length: 11 }, (_, i) => 'a' + i), 'ball'];
 
@@ -433,6 +433,7 @@
         <span><i style="border-color:var(--run)"></i>달리기</span>
         <span><i style="border-color:var(--pass);border-top-style:dashed"></i>패스</span>
         <span><i style="border-color:var(--dribble);border-top-style:dotted"></i>드리블</span>
+        <span><i style="border-color:var(--shot);border-top-width:4px"></i>슛</span>
       </div>
       <div class="row end" style="margin-top:6px">
         <span class="hint grow" style="margin:0">재생 속도</span>
@@ -467,6 +468,7 @@
         ${toolBtn('run', '<span class="sw" style="border-color:var(--run)"></span><small>달리기</small>', '달리기 동선')}
         ${toolBtn('pass', '<span class="sw" style="border-color:var(--pass);border-top-style:dashed"></span><small>패스</small>', '패스')}
         ${toolBtn('dribble', '<span class="sw" style="border-color:var(--dribble);border-top-style:dotted"></span><small>드리블</small>', '드리블')}
+        ${toolBtn('shot', '<span class="sw" style="border-color:var(--shot);border-top-width:4px"></span><small>슛</small>', '슛')}
         ${toolBtn('erase', '🧽<small>지우기</small>', '선 지우기')}
         <button id="undoBtn" title="되돌리기" ${S.undo.length ? '' : 'disabled'}>↶<small>취소</small></button>
       </div>
@@ -592,6 +594,7 @@
       run: '선수에서 시작해 달릴 길을 그리세요.',
       pass: '공에서 받을 곳까지 그리세요. 공이 따라갑니다.',
       dribble: '공 가진 선수에서 그리면 공과 함께 갑니다.',
+      shot: '공에서 골문 쪽으로 그리세요. 공이 날아갑니다.',
       erase: '지울 선을 누르세요.',
     }[S.tool];
   }
@@ -863,7 +866,7 @@
   function fieldSvg() {
     const stripes = Array.from({ length: 10 }, (_, i) => `<rect x="0" y="${i * 10.5}" width="${W}" height="10.5" fill="${i % 2 ? '#2b7a34' : '#2f8538'}"/>`).join('');
     const ln = 'stroke="#ffffffd0" stroke-width="0.28" fill="none"';
-    const arrowDefs = ['run', 'pass', 'dribble']
+    const arrowDefs = ['run', 'pass', 'dribble', 'shot']
       .map(
         (k) =>
           `<marker id="ah-${k}" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="2.6" markerHeight="2.6" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill:var(--${k})"/></marker>`
@@ -927,6 +930,7 @@
       run: 'style="stroke:var(--run)" stroke-width="0.45"',
       pass: 'style="stroke:var(--pass)" stroke-width="0.45" stroke-dasharray="1.4 0.9"',
       dribble: 'style="stroke:var(--dribble)" stroke-width="0.55" stroke-dasharray="0.15 0.75" stroke-linecap="round"',
+      shot: 'style="stroke:var(--shot)" stroke-width="0.75"',
     }[a.kind];
     const d = pathD(a.points);
     return `<g opacity="${opacity}"><path d="${d}" fill="none" ${style} stroke-linejoin="round" marker-end="url(#ah-${a.kind})"/>${
@@ -1128,7 +1132,7 @@
         let owner = null;
         let start = p;
         let withBall = false;
-        if (S.tool === 'pass') {
+        if (S.tool === 'pass' || S.tool === 'shot') {
           owner = 'ball';
           if (dist(sc.ball, p) < 5) start = sc.ball;
           else {

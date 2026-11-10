@@ -138,6 +138,7 @@ test('전술 수정: 입력값을 정리하고, 다른 사람이 먼저 고쳤�
     { kind: 'fly', points: [[1, 1], [2, 2]] }, // 없는 종류는 버린다
     { kind: 'pass', owner: 'evil', points: [[1, 1], [5, 5]] }, // 잘못된 owner는 null
     { kind: 'dribble', owner: 'h5', withBall: true, points: [[1, 1]] }, // 점 하나는 버린다
+    { kind: 'shot', owner: 'ball', points: [[30, 12], [33, -1]] }, // 슛 (골문 안 좌표 허용)
   ];
   edited.scenes.push({ title: '2단계' });
   edited.lineup[3] = { pos: 'CB', name: '용병 김씨', number: '23' };
@@ -148,7 +149,8 @@ test('전술 수정: 입력값을 정리하고, 다른 사람이 먼저 고쳤�
   assert.equal(saved.rev, 2);
   assert.equal(saved.title, '압박');
   assert.deepEqual(saved.scenes[0].home[0], [71, -3]);
-  assert.equal(saved.scenes[0].arrows.length, 2);
+  assert.equal(saved.scenes[0].arrows.length, 3);
+  assert.deepEqual(saved.scenes[0].arrows[2], { id: saved.scenes[0].arrows[2].id, kind: 'shot', owner: 'ball', withBall: false, points: [[30, 12], [33, -1]] });
   assert.equal(saved.scenes[0].arrows[0].owner, 'h9');
   assert.equal(saved.scenes[0].arrows[1].owner, null);
   assert.equal(saved.scenes.length, 2);
