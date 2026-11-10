@@ -41,7 +41,7 @@
     route: { view: 'list' },
     work: null, // 편집 중인 전술 사본
     scene: 0,
-    tool: 'move',
+    tool: 'flow', // flow: 끌어서 동선, move: 위치만 옮기기, erase: 선 지우기
     undo: [],
     dirty: false,
     saving: null,
@@ -222,7 +222,7 @@
       if (prev.view !== 'strategy' || prev.id !== S.route.id) {
         S.work = null;
         S.undo = [];
-        S.tool = 'move';
+        S.tool = 'flow';
       }
       S.scene = S.route.scene;
     }
@@ -464,11 +464,8 @@
   function toolBar() {
     const toolBtn = (id, label, title) => `<button data-tool="${id}" class="${S.tool === id ? 'on' : ''}" title="${title}">${label}</button>`;
     return `<div class="tools" id="tools">
-        ${toolBtn('move', '✋<small>이동</small>', '선수·공 옮기기')}
-        ${toolBtn('run', '<span class="sw" style="border-color:var(--run)"></span><small>달리기</small>', '달리기 동선')}
-        ${toolBtn('pass', '<span class="sw" style="border-color:var(--pass);border-top-style:dashed"></span><small>패스</small>', '패스')}
-        ${toolBtn('dribble', '<span class="sw" style="border-color:var(--dribble);border-top-style:dotted"></span><small>드리블</small>', '드리블')}
-        ${toolBtn('shot', '<span class="sw" style="border-color:var(--shot);border-top-width:4px"></span><small>슛</small>', '슛')}
+        ${toolBtn('flow', '👆<small>동선</small>', '끌어서 달리기·드리블·패스·슛')}
+        ${toolBtn('move', '✋<small>배치</small>', '동선 없이 위치만 옮기기')}
         ${toolBtn('erase', '🧽<small>지우기</small>', '선 지우기')}
         <button id="undoBtn" title="되돌리기" ${S.undo.length ? '' : 'disabled'}>↶<small>취소</small></button>
       </div>
@@ -590,13 +587,10 @@
 
   function toolHint() {
     return {
-      move: '선수나 공을 끌어서 옮기세요.',
-      run: '선수에서 시작해 달릴 길을 그리세요.',
-      pass: '공에서 받을 곳까지 그리세요. 공이 따라갑니다.',
-      dribble: '공 가진 선수에서 그리면 공과 함께 갑니다.',
-      shot: '공에서 골문 쪽으로 그리세요. 공이 날아갑니다.',
+      flow: '선수를 끌면 달리기(공 가진 선수는 드리블), 공을 끌어 동료 근처에 놓으면 패스, 골문 앞에 놓으면 슛. 다시 끌면 바뀝니다.',
+      move: '동선 없이 선수와 공의 위치만 옮깁니다. 시작 배치를 잡을 때 쓰세요.',
       erase: '지울 선을 누르세요.',
-    }[S.tool];
+    }[S.tool] || '';
   }
 
   function slotHtml(l, i, ed, pm, st) {
@@ -1008,7 +1002,7 @@
     for (const k of KEYS) {
       if (k === 'ball') continue;
       const q = posOf(k);
-      if (dist(q, ball) < 1.6) return [q[0] + 1.75, q[1] + 1.35];
+      if (dist(q, ball) < 2.5) return [q[0] + 1.75, q[1] + 1.35];
     }
     return ball;
   }
@@ -1076,6 +1070,103 @@
     return s;
   }
 
+  // ---------- 동선 모드: 끌면 알아서 달리기 / 드리블 / 패스 / 슛 ----------
+  const GOAL_ZONE = (q) => q[1] < 5 && q[0] > 22 && q[0] < 46; // 골문 앞에 놓으면 슛
+
+  // 공을 가진 선수 (공 2.5m 안의 가장 가까운 선수)
+  function ballHolder(sc) {
+    return nearest(sc, sc.ball, 2.5, (k) => k !== 'ball');
+  }
+
+  // 선수가 이 장면에서 도착하는 곳 (동선이 있으면 그 끝, 없으면 지금 위치)
+  function arrivalOf(sc, k) {
+    const a = sc.arrows.filter((x) => x.owner === k).pop();
+    return a ? a.points[a.points.length - 1] : getPos(sc, k);
+  }
+
+  // 공을 패스로 보낼 받는 사람: 놓은 곳 근처(5m)에 도착하는 같은 팀 선수
+  function passReceiver(sc, q) {
+    const holder = ballHolder(sc);
+    let best = null;
+    let bd = 5;
+    for (const k of KEYS) {
+      if (k === 'ball' || k === holder) continue;
+      if (holder && k[0] !== holder[0]) continue;
+      const dd = dist(arrivalOf(sc, k), q);
+      if (dd < bd) {
+        bd = dd;
+        best = k;
+      }
+    }
+    return best;
+  }
+
+  function flowKind(sc, key, q) {
+    if (key === 'ball') return !passReceiver(sc, q) && GOAL_ZONE(q) ? 'shot' : 'pass';
+    return hasBallNow(sc, key) ? 'dribble' : 'run';
+  }
+
+  // 이 장면에서 공을 가진 채로 움직일 수 있는지 (이미 패스·슛 선이 있으면 공은 떠난 것)
+  function hasBallNow(sc, key) {
+    return ballHolder(sc) === key && !sc.arrows.some((a) => a.owner === 'ball');
+  }
+
+  function finishFlow(dg) {
+    const sc = S.work.scenes[S.scene];
+    const key = dg.key;
+    let pts = simplify(dg.path, 0.6);
+    if (pathLength(pts) < 2.5) {
+      S.undo.pop();
+      drawDyn();
+      return;
+    }
+    if (sc.arrows.length >= 60) {
+      S.undo.pop();
+      drawDyn();
+      return toast('한 장면에 선은 60개까지 그릴 수 있습니다.');
+    }
+    const id = Math.random().toString(36).slice(2, 12);
+    const round = (q) => [Math.round(q[0] * 10) / 10, Math.round(q[1] * 10) / 10];
+    let msg = '';
+    if (key === 'ball') {
+      let end = pts[pts.length - 1];
+      const rcv = passReceiver(sc, end);
+      let kind = 'pass';
+      if (rcv) {
+        end = arrivalOf(sc, rcv);
+        const t = tokenInfo(S.work, rcv, playersById());
+        msg = `${nameText(t) || t.pos}에게 패스`;
+      } else if (GOAL_ZONE(end)) {
+        kind = 'shot';
+        end = [Math.min(37, Math.max(31, end[0])), -1];
+        msg = '슛';
+      } else msg = '빈 공간으로 패스';
+      pts[0] = sc.ball.slice();
+      pts[pts.length - 1] = end;
+      // 공의 패스·슛 선은 한 장면에 하나: 새로 그리면 바뀐다
+      sc.arrows = sc.arrows.filter((a) => a.owner !== 'ball');
+      sc.arrows.push({ id, kind, owner: 'ball', withBall: false, points: pts.map(round) });
+    } else {
+      const withBall = hasBallNow(sc, key);
+      const oldArrival = arrivalOf(sc, key);
+      pts[0] = getPos(sc, key).slice();
+      const end = pts[pts.length - 1];
+      // 같은 선수의 동선은 하나: 다시 끌면 바뀐다
+      sc.arrows = sc.arrows.filter((a) => a.owner !== key);
+      sc.arrows.push({ id, kind: withBall ? 'dribble' : 'run', owner: key, withBall, points: pts.map(round) });
+      // 이 선수에게 가던 패스는 새 도착 지점으로 따라간다
+      for (const a of sc.arrows) {
+        if (a.owner === 'ball' && a.kind === 'pass' && dist(a.points[a.points.length - 1], oldArrival) < 1) a.points[a.points.length - 1] = round(end);
+      }
+      msg = withBall ? '드리블' : '달리기';
+    }
+    changed();
+    const b = $('#undoBtn');
+    if (b) b.disabled = false;
+    drawDyn();
+    toast(msg, 1500);
+  }
+
   function bindPitch() {
     const svg = $('#pitch');
     if (!editing()) {
@@ -1096,19 +1187,24 @@
       if (S.sug) return toast('추천을 적용(✓)하거나 닫은(✕) 뒤에 편집하세요.');
       const sc = S.work.scenes[S.scene];
       const p = svgPoint(svg, e);
-      if (S.tool === 'move') {
+      if (S.tool === 'move' || S.tool === 'flow') {
         // 공은 화면에 그려진 자리로 판정한다
         const bp = ballShown((k) => getPos(sc, k));
         // 명단 이름표를 골라 둔 상태면 빨강은 무시하고 가장 가까운 파랑 선수에게
+        // 공은 화면에 그려진 자리 기준, 선수 중심보다 공에 더 가까우면 공
+        const pk = pickPlayer(sc, p);
+        const db = dist(bp, p);
         const k = S.pick
           ? nearest(sc, p, 6, (k) => k[0] === 'h')
-          : dist(bp, p) < 1.4
+          : db < 1.4 || (db < 2.6 && (!pk || db < dist(getPos(sc, pk), p)))
             ? 'ball'
-            : pickPlayer(sc, p) || (dist(bp, p) < 4 ? 'ball' : null);
+            : pk || (db < 4 ? 'ball' : null);
         if (!k) return;
         S.undo.push(JSON.stringify(S.work));
         const from = k === 'ball' ? bp : getPos(sc, k);
-        S.drag = { key: k, moved: false, start: p, off: [from[0] - p[0], from[1] - p[1]] };
+        S.drag = { key: k, moved: false, start: p, off: [from[0] - p[0], from[1] - p[1]], flow: S.tool === 'flow' };
+        // 동선 모드: 선수·공은 그대로 두고 손가락이 지나간 길을 동선으로 기록
+        if (S.drag.flow) S.drag.path = [(k === 'ball' ? sc.ball : from).slice()];
       } else if (S.tool === 'erase') {
         let hit = -1;
         let best = 2.5;
@@ -1157,8 +1253,13 @@
         // 손가락이 살짝 흔들린 것은 누르기로 본다
         if (!S.drag.moved && dist(p, S.drag.start) < 1) return;
         const sc = S.work.scenes[S.scene];
-        setPos(sc, S.drag.key, [p[0] + S.drag.off[0], p[1] + S.drag.off[1]]);
+        const q = [p[0] + S.drag.off[0], p[1] + S.drag.off[1]];
         S.drag.moved = true;
+        if (S.drag.flow) {
+          const path = S.drag.path;
+          if (dist(path[path.length - 1], q) >= 0.7) path.push(q);
+          S.draw = { kind: flowKind(sc, S.drag.key, q), points: path };
+        } else setPos(sc, S.drag.key, q);
         drawDyn();
       } else {
         const pts = S.draw.points;
@@ -1171,6 +1272,13 @@
 
     const end = () => {
       if (S.drag) {
+        if (S.drag.moved && S.drag.flow) {
+          const dg = S.drag;
+          S.drag = null;
+          S.draw = null;
+          finishFlow(dg);
+          return;
+        }
         if (S.drag.moved) {
           changed();
           const b = $('#undoBtn');

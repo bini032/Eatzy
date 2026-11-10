@@ -273,7 +273,7 @@ h3 {
   margin: 0 auto;
 }
 .pitch-wrap.edit {
-  max-width: calc((100dvh - 250px) * 74 / 111);
+  max-width: calc((100dvh - 265px) * 74 / 111);
 }
 
 /* 선수 명단 이름표 (끌어서 동그라미에 놓기) */
@@ -377,7 +377,7 @@ svg.pitch.editable {
 
 .tools {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 4px;
   margin-bottom: 4px;
 }
@@ -398,10 +398,10 @@ svg.pitch.editable {
 .tool-hint {
   margin: 0 0 6px;
   font-size: 12px;
-  /* 도구를 바꿔도 경기장이 움직이지 않게 한 줄로 고정 */
-  white-space: nowrap;
+  line-height: 1.4;
+  /* 도구를 바꿔도 경기장이 움직이지 않게 두 줄 높이로 고정 */
+  height: 2.8em;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 .tools .sw {
   display: block;
