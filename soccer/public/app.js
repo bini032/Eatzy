@@ -211,6 +211,7 @@
     const parts = h.split('/');
     if (parts[0] === 's' && parts[1]) return { view: 'strategy', id: parts[1], scene: Math.max(0, (parseInt(parts[2], 10) || 1) - 1) };
     if (parts[0] === 'roster') return { view: 'roster' };
+    if (parts[0] === 'manual') return { view: 'manual' };
     return { view: 'list' };
   }
 
@@ -250,12 +251,44 @@
     lock.textContent = isEditor() ? `👤 ${S.me.name}` : '🔒 보기';
     lock.classList.toggle('editing', isEditor());
     const inStrategy = S.route.view === 'strategy';
-    $('#backBtn').hidden = !inStrategy;
-    $('#tabs').hidden = inStrategy;
+    const inManual = S.route.view === 'manual';
+    $('#backBtn').hidden = !inStrategy && !inManual;
+    $('#tabs').hidden = inStrategy || inManual;
+    $('#manualBtn').classList.toggle('on', inManual);
+    updateManualDot();
+    if (inManual) return renderManual();
     for (const a of document.querySelectorAll('#tabs a')) a.classList.toggle('active', a.dataset.tab === S.route.view);
     if (S.route.view === 'roster') renderRoster();
     else if (inStrategy) renderStrategy();
     else renderList();
+  }
+
+  // ---------- 매뉴얼 (manual.js) ----------
+  // 이 기기에서 마지막으로 본 매뉴얼 버전보다 새 버전이면 빨간 점
+  function updateManualDot() {
+    const seen = local.get('soccer.manualSeen');
+    $('#manualDot').hidden = !window.Manual.newer(window.Manual.VERSION, seen);
+  }
+
+  function renderManual() {
+    const M = window.Manual;
+    const seen = local.get('soccer.manualSeen');
+    view.innerHTML = `
+      <h2>📖 매뉴얼 <span class="hint">v${esc(M.VERSION)}</span></h2>
+      <h3>새 소식</h3>
+      <div class="updates">${M.UPDATES.map(
+        (u, i) => `<details class="update" ${i < 2 || M.newer(u.version, seen) ? 'open' : ''}>
+          <summary><b>v${esc(u.version)}</b> <span class="hint">${esc(u.date)}</span>${M.newer(u.version, seen) ? ' <span class="new">NEW</span>' : ''}</summary>
+          <ul>${u.items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+        </details>`
+      ).join('')}</div>
+      <h3>사용법</h3>
+      <div class="guide">${M.GUIDE.map(
+        ([title, lines]) => `<details class="update"><summary><b>${esc(title)}</b></summary><ul>${lines.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></details>`
+      ).join('')}</div>`;
+    // 봤으니 빨간 점은 끈다 (NEW 표시는 이번 화면에서는 그대로 보여 준다)
+    local.set('soccer.manualSeen', M.VERSION);
+    updateManualDot();
   }
 
   function fmtDate(iso) {

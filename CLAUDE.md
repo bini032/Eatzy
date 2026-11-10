@@ -56,3 +56,6 @@ README의 "다른 사람들에게 링크로 공유하기"를 따른다.
 ## 축구 전술 보드 (`soccer/`)
 
 Eatzy와 별개인 앱이다. 별도 Render 웹 서비스(Root Directory `soccer`)로 배포하고, 설명은 `soccer/README.md`를 기준으로 한다. 명령은 `soccer/` 안에서 `npm install`, `npm start`, `npm test`. 테스트 파일은 루트 `npm test`(node --test 기본 패턴)에 잡히지 않도록 `soccer/tests/api.js`로 둔다.
+
+- 기능을 바꿀 때마다 `soccer/public/manual.js`의 `VERSION`을 올리고(1.1 → 1.2 …) `UPDATES` 맨 앞에 날짜(한국 시간)와 변경 내용을 사용자가 이해할 말로 추가한다. 사용법이 바뀌면 `GUIDE`와 `soccer/README.md`도 같이 고친다. 버전이 바뀌면 화면 상단 매뉴얼 버튼에 빨간 점이 뜬다(기기별 localStorage `soccer.manualSeen`).
+- AI(Claude)가 만든 추천 전술은 `origin: 'ai'`로 저장해 🤖 AI테스트 배지를 붙이고, 추천 장면 설명 앞에는 `[AI테스트 추천]`을 붙인다.
