@@ -51,6 +51,7 @@
     play: null,
     speed: 1,
     pick: null, // 명단에서 눌러 고른 선수 id (동그라미를 누르면 배정)
+    sug: null, // 다음 장면 추천 { mode: 'current'|'next', base, situation, ideas, i }
     roster: null, // 선수단 편집 사본
     rosterDirty: false,
   };
@@ -215,6 +216,7 @@
     await saveNow();
     const prev = S.route;
     S.route = parseRoute();
+    S.sug = null;
     if (S.route.view === 'strategy') {
       if (prev.view !== 'strategy' || prev.id !== S.route.id) {
         S.work = null;
@@ -418,9 +420,10 @@
         <button id="playBtn" class="play">${S.play ? '■ 정지' : '▶ 재생'}</button>
         ${st.scenes.map((s, i) => `<button data-scene="${i}" class="${i === S.scene ? 'on' : ''}" title="${esc(s.title)}">${i + 1}${s.title ? ' ' + esc(s.title.slice(0, 8)) : ''}</button>`).join('')}
         ${ed ? '<button id="addScene" title="지금 장면에서 동선대로 움직인 다음 장면을 만듭니다">+ 장면</button>' : ''}
+        ${ed ? `<button id="suggestBtn" class="${S.sug ? 'on' : ''}" title="지금 상황에 맞는 다음 동선 추천">✨ 추천</button>` : ''}
       </div>
       ${ed ? toolBar() : ''}
-      ${ed ? benchHtml(st) : ''}
+      ${ed ? (S.sug ? suggestHtml() : benchHtml(st)) : ''}
 
       <div class="pitch-wrap${ed ? ' edit' : ''}"><svg id="pitch" class="pitch ${ed ? 'editable' : ''}" viewBox="-3 -3 74 111" xmlns="http://www.w3.org/2000/svg">${fieldSvg()}<g id="dyn"></g></svg></div>
       <div class="legend">
@@ -467,6 +470,87 @@
         <button id="undoBtn" title="되돌리기" ${S.undo.length ? '' : 'disabled'}>↶<small>취소</small></button>
       </div>
       <p class="hint tool-hint" id="toolHint">${toolHint()}</p>`;
+  }
+
+  // ---------- 상황별 다음 장면 추천 (규칙 기반, suggest.js) ----------
+  function suggestHtml() {
+    const g = S.sug;
+    const idea = g.ideas[g.i];
+    return `<div class="sug" id="sugBar">
+      <div class="sug-head">
+        <span class="grow">📍 ${esc(g.situation)}</span>
+        ${idea ? `<button id="sugApply" class="primary">✓ ${g.mode === 'current' ? '이 장면에 적용' : '다음 장면으로'}</button>` : ''}
+        <button id="sugClose" aria-label="추천 닫기">✕</button>
+      </div>
+      ${
+        idea
+          ? `<div class="sug-cards">${g.ideas.map((x, i) => `<button data-sug="${i}" class="${i === g.i ? 'on' : ''}">${esc(x.title)}</button>`).join('')}</div>
+             <div class="sug-desc">${esc(idea.desc)}</div>`
+          : `<div class="sug-desc">${esc(g.note || '이 상황에 맞는 추천이 없습니다. 공을 선수 가까이 옮겨 누가 공을 가졌는지 정해 보세요.')}</div>`
+      }
+    </div>`;
+  }
+
+  function openSuggest() {
+    stopPlay();
+    const st = S.work;
+    const sc = st.scenes[S.scene];
+    // 동선이 있으면 그 끝 위치에서 이어지는 다음 장면, 없으면 이 장면에 넣을 동선을 추천
+    const mode = sc.arrows.length ? 'next' : 'current';
+    const base = mode === 'next' ? nextPositions(sc) : Object.fromEntries(KEYS.map((k) => [k, getPos(sc, k)]));
+    const labels = {};
+    st.lineup.forEach((l, i) => (labels['h' + i] = l.pos));
+    st.awayLineup.forEach((l, i) => (labels['a' + i] = l.pos));
+    const r = window.Suggest.suggest(base, labels);
+    S.sug = { mode, base, situation: r.situation, ideas: r.ideas, note: r.note, i: 0 };
+    renderStrategy();
+  }
+
+  function applySuggest() {
+    const g = S.sug;
+    const idea = g && g.ideas[g.i];
+    if (!idea) return;
+    const st = S.work;
+    if (g.mode === 'next' && st.scenes.length >= 30) return toast('장면은 30개까지 만들 수 있습니다.');
+    pushUndo();
+    const arrows = idea.arrows.map((a) => ({ ...clone(a), id: Math.random().toString(36).slice(2, 12) }));
+    const sc = st.scenes[S.scene];
+    if (g.mode === 'current') {
+      sc.arrows.push(...arrows);
+      if (!sc.title) sc.title = idea.title;
+      if (!sc.memo) sc.memo = idea.desc;
+    } else {
+      const next = clone(sc);
+      for (const k of KEYS) setPos(next, k, g.base[k]);
+      Object.assign(next, { id: Math.random().toString(36).slice(2, 12), title: idea.title, memo: idea.desc, arrows });
+      st.scenes.splice(S.scene + 1, 0, next);
+      S.scene += 1;
+      sceneHash(S.scene);
+    }
+    S.sug = null;
+    changed();
+    renderStrategy();
+    toast(`“${idea.title}” 동선을 넣었습니다. 끌어서 고치거나 ▶ 재생으로 확인하세요.`, 3500);
+  }
+
+  function bindSuggest() {
+    const btn = $('#suggestBtn');
+    if (btn) btn.onclick = () => (S.sug ? ((S.sug = null), renderStrategy()) : openSuggest());
+    const bar = $('#sugBar');
+    if (!bar) return;
+    bar.onclick = (e) => {
+      if (e.target.closest('#sugClose')) {
+        S.sug = null;
+        return renderStrategy();
+      }
+      if (e.target.closest('#sugApply')) return applySuggest();
+      const c = e.target.closest('[data-sug]');
+      if (!c) return;
+      S.sug.i = +c.dataset.sug;
+      for (const x of bar.querySelectorAll('[data-sug]')) x.classList.toggle('on', x === c);
+      bar.querySelector('.sug-desc').textContent = S.sug.ideas[S.sug.i].desc;
+      drawDyn();
+    };
   }
 
   // 선수 명단 이름표: 끌어서 우리 팀 동그라미에 놓거나, 누른 뒤 동그라미를 누르면 배정
@@ -530,6 +614,7 @@
       const b = e.target.closest('[data-scene]');
       if (!b) return;
       stopPlay();
+      S.sug = null;
       S.scene = +b.dataset.scene;
       sceneHash(S.scene);
       renderStrategy();
@@ -587,6 +672,7 @@
       renderStrategy();
     };
     $('#addScene').onclick = addScene;
+    bindSuggest();
     $('#homeF').onchange = (e) => applyFormation('home', e.target.value);
     $('#awayF').onchange = (e) => applyFormation('away', e.target.value);
     $('#delStrategy').onclick = deleteStrategy;
@@ -688,6 +774,7 @@
   function undo() {
     const prev = S.undo.pop();
     if (!prev) return;
+    S.sug = null;
     const rev = S.work.rev;
     S.work = JSON.parse(prev);
     S.work.rev = rev; // 서버 기준 버전은 그대로 유지
@@ -698,6 +785,7 @@
 
   function addScene() {
     stopPlay();
+    S.sug = null;
     pushUndo();
     const sc = S.work.scenes[S.scene];
     if (S.work.scenes.length >= 30) return toast('장면은 30개까지 만들 수 있습니다.');
@@ -876,7 +964,12 @@
     const st = current();
     if (!g || !st) return;
     const sc = st.scenes[S.scene];
-    const f = frame || { pos: (k) => getPos(sc, k), arrows: sc.arrows, arrowOpacity: 1 };
+    const idea = S.sug && editing() && S.sug.ideas[S.sug.i];
+    const f =
+      frame ||
+      (S.sug && editing()
+        ? { pos: (k) => S.sug.base[k], arrows: idea ? idea.arrows : [], arrowOpacity: 0.95 }
+        : { pos: (k) => getPos(sc, k), arrows: sc.arrows, arrowOpacity: 1 });
     const pm = playersById();
     let html = f.arrows.map((a) => arrowSvg(a, f.arrowOpacity)).join('');
     if (S.draw && S.draw.points.length > 1) html += arrowSvg({ kind: S.draw.kind, points: S.draw.points }, 0.8);
@@ -980,6 +1073,7 @@
 
     svg.addEventListener('pointerdown', (e) => {
       if (S.play || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      if (S.sug) return toast('추천을 적용(✓)하거나 닫은(✕) 뒤에 편집하세요.');
       const sc = S.work.scenes[S.scene];
       const p = svgPoint(svg, e);
       if (S.tool === 'move') {
@@ -1185,6 +1279,10 @@
 
   // ---------- 재생 ----------
   function startPlay() {
+    if (S.sug) {
+      S.sug = null;
+      renderStrategy();
+    }
     const st = current();
     if (!st) return;
     const hasMove = st.scenes.length > 1 || st.scenes[0].arrows.length;

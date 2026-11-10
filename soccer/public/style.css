@@ -618,3 +618,42 @@ label.check input {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* 다음 장면 추천 */
+.sug {
+  background: #2a2a12;
+  border: 1px solid #6b5f1f;
+  border-radius: 10px;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+}
+.sug-head {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+}
+.sug-head button {
+  min-height: 34px;
+  padding: 4px 10px;
+  font-size: 13px;
+}
+.sug-cards {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 6px 0 4px;
+  scrollbar-width: none;
+}
+.sug-cards button {
+  flex: none;
+  min-height: 34px;
+  padding: 4px 10px;
+  font-size: 13px;
+  border-radius: 17px;
+}
+.sug-desc {
+  font-size: 12px;
+  color: #e6dcae;
+  line-height: 1.4;
+}
