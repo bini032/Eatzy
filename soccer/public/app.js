@@ -842,22 +842,25 @@
     const posText = t.pos || '?';
     const fs = posText.length > 2 ? 1.15 : 1.5;
     const sel = S.drag && S.drag.key === k ? ' selected' : '';
-    // 이름(또는 번호)을 정하면 동그라미 아래에 "번호 이름" 이름표를 붙인다
-    let tag = '';
-    const name = (t.name || '').slice(0, 6);
-    if (name || t.number != null) {
-      const num = t.number != null ? String(t.number) : '';
-      const TF = 1.5;
-      const w = (textWidth(num) + (num && name ? 0.4 : 0) + textWidth(name)) * TF + 1.4;
-      const ty = y + 3.75;
-      tag = `<rect x="${(x - w / 2).toFixed(2)}" y="${(ty - 1.35).toFixed(2)}" width="${w.toFixed(2)}" height="1.95" rx="0.95" fill="rgba(8,22,14,0.82)" stroke="${home ? 'rgba(120,170,255,0.7)' : 'rgba(255,140,140,0.7)'}" stroke-width="0.12"/>
-      <text x="${x}" y="${ty}" text-anchor="middle" font-size="${TF}" fill="#fff">${num ? `<tspan fill="#ffd54a" font-weight="700">${num}</tspan>${name ? ' ' : ''}` : ''}${esc(name)}</text>`;
-    }
     return `<g class="token${sel}">
       <circle class="body" cx="${x}" cy="${y}" r="2.1" style="fill:${fill}" stroke="#fff" stroke-width="0.3"/>
       <text x="${x}" y="${y + fs * 0.36}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="#fff">${esc(posText)}</text>
-      ${tag}
     </g>`;
+  }
+
+  // 이름(또는 번호)을 정하면 동그라미 아래에 "번호 이름" 이름표. 동그라미에 가려지지 않게 맨 위 층에 따로 그린다
+  function tagSvg(k, p, pm, st) {
+    const t = tokenInfo(st, k, pm);
+    const name = (t.name || '').slice(0, 6);
+    if (!name && t.number == null) return '';
+    const [x, y] = p;
+    const home = k[0] === 'h';
+    const num = t.number != null ? String(t.number) : '';
+    const TF = 1.5;
+    const w = (textWidth(num) + (num && name ? 0.4 : 0) + textWidth(name)) * TF + 1.4;
+    const ty = y + 3.75;
+    return `<g class="tag" pointer-events="none"><rect x="${(x - w / 2).toFixed(2)}" y="${(ty - 1.35).toFixed(2)}" width="${w.toFixed(2)}" height="1.95" rx="0.95" fill="rgba(8,22,14,0.85)" stroke="${home ? 'rgba(120,170,255,0.8)' : 'rgba(255,140,140,0.8)'}" stroke-width="0.12"/>
+      <text x="${x}" y="${ty}" text-anchor="middle" font-size="${TF}" fill="#fff">${num ? `<tspan fill="#ffd54a" font-weight="700">${num}</tspan>${name ? ' ' : ''}` : ''}${esc(name)}</text></g>`;
   }
 
   // 이름표 폭 계산용 대략적인 글자 폭 (글자 크기 1 기준)
@@ -880,6 +883,9 @@
     html += KEYS.filter((k) => k[0] === 'a').map((k) => tokenSvg(k, f.pos(k), pm, st)).join('');
     html += KEYS.filter((k) => k[0] === 'h').map((k) => tokenSvg(k, f.pos(k), pm, st)).join('');
     html += tokenSvg('ball', ballShown(f.pos), pm, st);
+    // 이름표는 모든 동그라미 위에 (우리 팀 이름표가 맨 위)
+    html += KEYS.filter((k) => k[0] === 'a').map((k) => tagSvg(k, f.pos(k), pm, st)).join('');
+    html += KEYS.filter((k) => k[0] === 'h').map((k) => tagSvg(k, f.pos(k), pm, st)).join('');
     g.innerHTML = html;
   }
 
@@ -914,6 +920,17 @@
       }
     }
     return best;
+  }
+
+  // 누른 곳의 선수. 근처에 우리 팀(파랑)이 있으면 파랑 우선, 상대(빨강)는 동그라미 한가운데를 눌렀을 때만
+  function pickPlayer(sc, p, max = 4) {
+    const h = nearest(sc, p, max, (k) => k[0] === 'h');
+    const a = nearest(sc, p, max, (k) => k[0] === 'a');
+    if (!h) return a;
+    if (!a) return h;
+    const dh = dist(getPos(sc, h), p);
+    const da = dist(getPos(sc, a), p);
+    return da < 1.1 && da + 0.6 < dh ? a : h;
   }
 
   function segDist(p, a, b) {
@@ -953,14 +970,13 @@
       svg.addEventListener('click', (e) => {
         const st = current();
         if (!st || S.play) return;
-        const k = nearest(st.scenes[S.scene], svgPoint(svg, e), 3.5, (k) => k !== 'ball');
+        const k = pickPlayer(st.scenes[S.scene], svgPoint(svg, e), 3.5);
         if (!k) return;
         const t = tokenInfo(st, k, playersById());
         toast(`${k[0] === 'h' ? '우리' : '상대'} ${t.pos}${nameText(t) ? ' · ' + nameText(t) : ''}${t.role ? ' — ' + t.role : ''}`, 4000);
       });
       return;
     }
-    const isPlayer = (k) => k !== 'ball';
 
     svg.addEventListener('pointerdown', (e) => {
       if (S.play || (e.pointerType === 'mouse' && e.button !== 0)) return;
@@ -969,7 +985,12 @@
       if (S.tool === 'move') {
         // 공은 화면에 그려진 자리로 판정한다
         const bp = ballShown((k) => getPos(sc, k));
-        const k = dist(bp, p) < 1.4 ? 'ball' : nearest(sc, p, 4, isPlayer) || (dist(bp, p) < 4 ? 'ball' : null);
+        // 명단 이름표를 골라 둔 상태면 빨강은 무시하고 가장 가까운 파랑 선수에게
+        const k = S.pick
+          ? nearest(sc, p, 6, (k) => k[0] === 'h')
+          : dist(bp, p) < 1.4
+            ? 'ball'
+            : pickPlayer(sc, p) || (dist(bp, p) < 4 ? 'ball' : null);
         if (!k) return;
         S.undo.push(JSON.stringify(S.work));
         const from = k === 'ball' ? bp : getPos(sc, k);
@@ -1001,11 +1022,11 @@
           owner = 'ball';
           if (dist(sc.ball, p) < 5) start = sc.ball;
           else {
-            const k = nearest(sc, p, 4, isPlayer);
+            const k = pickPlayer(sc, p);
             if (k) start = getPos(sc, k);
           }
         } else {
-          owner = nearest(sc, p, 4, isPlayer);
+          owner = pickPlayer(sc, p);
           if (owner) start = getPos(sc, owner);
           withBall = S.tool === 'dribble' && dist(sc.ball, start) < 4;
         }
