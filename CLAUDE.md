@@ -52,3 +52,7 @@ README의 "다른 사람들에게 링크로 공유하기"를 따른다.
 - 관리자: `SB` 계정(일반 계정처럼 처음 입력한 비밀번호로 생성, 모든 그룹 관리자 + 전체 현황 `/api/admin/overview`), 그룹을 만든 계정(`meta.ownerId`), 그룹 관리자로 지정된 계정(`meta.admins`, 그 그룹에서만. 지정·해제는 만든 계정과 SB만, `/api/group/admins`, 현황 `/api/group`), 또는 `x-admin-key`/`key`로 보낸 `ADMIN_KEY`(업로드 스크립트용).
 - 저장 문서의 `authVersion`이 바뀌면(`src/store.js`) 예전 계정·세션·그룹 관리자 정보를 지운다.
 - 화면 문구는 `public/i18n.js`(ko/en/ja/zh), 서버 안내 메시지는 `src/i18n.js`(한국어 문장이 키, `x-lang` 헤더로 선택)에 있다. 문구를 추가하면 네 언어를 모두 채운다.
+
+## 축구 전술 보드 (`soccer/`)
+
+Eatzy와 별개인 앱이다. 별도 Render 웹 서비스(Root Directory `soccer`)로 배포하고, 설명은 `soccer/README.md`를 기준으로 한다. 명령은 `soccer/` 안에서 `npm install`, `npm start`, `npm test`. 테스트 파일은 루트 `npm test`(node --test 기본 패턴)에 잡히지 않도록 `soccer/tests/api.js`로 둔다.

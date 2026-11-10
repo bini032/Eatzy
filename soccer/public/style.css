@@ -20,6 +20,9 @@
 * {
   box-sizing: border-box;
 }
+[hidden] {
+  display: none !important;
+}
 
 html,
 body {
@@ -254,21 +257,22 @@ h3 {
   flex: none;
   padding: 6px 10px;
 }
-.play-row {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  margin: 4px 0 8px;
-}
-.play-row .play {
-  flex: 1;
+.scenes .play {
+  position: sticky;
+  left: 0;
+  z-index: 1;
   font-weight: 700;
+  background: #23563a;
 }
 
+/* 휴대폰에서 장면 줄 + 도구 줄 + 경기장이 한 화면에 들어오게 */
 .pitch-wrap {
   width: 100%;
-  max-width: calc((100dvh - 120px) * 74 / 111);
+  max-width: calc((100dvh - 130px) * 74 / 111);
   margin: 0 auto;
+}
+.pitch-wrap.edit {
+  max-width: calc((100dvh - 200px) * 74 / 111);
 }
 svg.pitch {
   display: block;
@@ -310,21 +314,38 @@ svg.pitch.editable {
 
 .tools {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
-  margin-top: 10px;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+  margin-bottom: 4px;
 }
 .tools button {
-  padding: 6px 4px;
-  font-size: 13px;
+  padding: 3px 2px;
+  min-height: 44px;
+  font-size: 15px;
+  line-height: 1.1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+.tools small {
+  font-size: 11px;
+}
+.tool-hint {
+  margin: 0 0 6px;
+  font-size: 12px;
+  /* 도구를 바꿔도 경기장이 움직이지 않게 한 줄로 고정 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .tools .sw {
-  display: inline-block;
-  width: 16px;
+  display: block;
+  width: 20px;
   height: 0;
+  margin: 7px 0 6px;
   border-top: 3px solid;
-  vertical-align: middle;
-  margin-right: 3px;
 }
 
 .legend {
