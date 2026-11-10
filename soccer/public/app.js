@@ -51,6 +51,7 @@
     play: null,
     speed: 1,
     pick: null, // 명단에서 눌러 고른 선수 id (동그라미를 누르면 배정)
+    dropKey: null, // 명단 이름표를 끄는 동안 받게 될 동그라미
     sug: null, // 다음 장면 추천 { mode: 'current'|'next', base, situation, ideas, i }
     roster: null, // 선수단 편집 사본
     rosterDirty: false,
@@ -712,6 +713,23 @@
     const bench = $('#bench');
     if (!bench) return;
     let d = null; // { pid, x, y, el, ghost }
+
+    // 놓는 위치는 손가락이 아니라 화면에 보이는 이름표의 가운데 (이름표는 손가락 위쪽에 떠 있다)
+    function dropTarget(ghost) {
+      const g = ghost.getBoundingClientRect();
+      const pt = { clientX: g.left + g.width / 2, clientY: g.top + g.height / 2 };
+      const svg = $('#pitch');
+      const r = svg.getBoundingClientRect();
+      const inside = pt.clientX >= r.left && pt.clientX <= r.right && pt.clientY >= r.top && pt.clientY <= r.bottom;
+      const k = inside ? nearest(S.work.scenes[S.scene], svgPoint(svg, pt), 7, (k) => k[0] === 'h') : null;
+      return { inside, k };
+    }
+    function setDropKey(k) {
+      if (S.dropKey === k) return;
+      S.dropKey = k;
+      drawDyn(); // 받게 될 동그라미에 노란 테두리
+    }
+
     bench.addEventListener('pointerdown', (e) => {
       const chip = e.target.closest('.chip');
       if (!chip || S.play) return;
@@ -728,6 +746,7 @@
       }
       d.ghost.style.left = e.clientX + 'px';
       d.ghost.style.top = e.clientY + 'px';
+      setDropKey(dropTarget(d.ghost).k);
       e.preventDefault();
     });
     const finish = (e, cancelled) => {
@@ -735,16 +754,13 @@
       const cur = d;
       d = null;
       if (cur.ghost) {
+        const t = dropTarget(cur.ghost);
         cur.ghost.remove();
-        if (cancelled) return;
-        // 놓은 곳에서 가장 가까운 우리 팀 동그라미
-        const svg = $('#pitch');
-        const r = svg.getBoundingClientRect();
-        if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
-        const k = nearest(S.work.scenes[S.scene], svgPoint(svg, e), 6, (k) => k[0] === 'h');
-        if (!k) return toast('우리 팀(파란) 동그라미 위에 놓으세요.');
+        setDropKey(null);
+        if (cancelled || !t.inside) return;
+        if (!t.k) return toast('이름표를 우리 팀(파란) 동그라미 가까이에 놓으세요.');
         S.pick = null;
-        assignPlayer(+k.slice(1), cur.pid);
+        assignPlayer(+t.k.slice(1), cur.pid);
         renderStrategy();
       } else if (!cancelled) {
         // 누르기만 했으면 선택 → 동그라미를 누르면 배정
@@ -929,7 +945,7 @@
     const fill = home ? (gk ? 'var(--home-gk)' : 'var(--home)') : gk ? 'var(--away-gk)' : 'var(--away)';
     const posText = t.pos || '?';
     const fs = posText.length > 2 ? 1.15 : 1.5;
-    const sel = S.drag && S.drag.key === k ? ' selected' : '';
+    const sel = (S.drag && S.drag.key === k) || S.dropKey === k ? ' selected' : '';
     return `<g class="token${sel}">
       <circle class="body" cx="${x}" cy="${y}" r="2.1" style="fill:${fill}" stroke="#fff" stroke-width="0.3"/>
       <text x="${x}" y="${y + fs * 0.36}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="#fff">${esc(posText)}</text>
