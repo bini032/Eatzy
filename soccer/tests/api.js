@@ -109,9 +109,10 @@ test('비밀번호를 5번 틀리면 잠긴다', async (t) => {
 test('전술 만들기: 11명씩 기본 위치와 장면 하나', async (t) => {
   const s = await setup();
   t.after(s.close);
-  const r = await s.call('POST', '/api/strategies', { body: { title: '빌드업', formation: '4-3-3' }, key: s.KEY });
+  const r = await s.call('POST', '/api/strategies', { body: { title: '빌드업', formation: '4-3-3', origin: 'ai' }, key: s.KEY });
   assert.equal(r.status, 201);
   const st = r.body.strategy;
+  assert.equal(st.origin, 'ai');
   assert.equal(st.title, '빌드업');
   assert.equal(st.rev, 1);
   assert.equal(st.lineup.length, 11);
@@ -124,6 +125,7 @@ test('전술 만들기: 11명씩 기본 위치와 장면 하나', async (t) => {
   assert.ok(st.scenes[0].away.every(([, y]) => y < 52.5));
   const v = (await s.call('GET', '/api/version')).body.version;
   assert.equal(v, r.body.version);
+  assert.equal((await s.call('POST', '/api/strategies', { body: { origin: 'hack' }, key: s.KEY })).body.strategy.origin, '');
 });
 
 test('전술 수정: 입력값을 정리하고, 다른 사람이 먼저 고쳤으면 409', async (t) => {

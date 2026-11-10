@@ -658,3 +658,39 @@ label.check input {
   color: #e6dcae;
   line-height: 1.4;
 }
+
+/* 경기장 확대 버튼 */
+.pitch-wrap {
+  position: relative;
+}
+.zoom {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.zoom button {
+  width: 34px;
+  height: 34px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 8px;
+  background: rgba(8, 22, 14, 0.75);
+  font-size: 17px;
+  line-height: 1;
+}
+
+.author {
+  color: var(--text);
+  font-weight: 700;
+}
+.badge.ai {
+  background: #7c5cff;
+  color: #fff;
+}
+.ai-note {
+  margin: 2px 0 6px;
+  color: #c9bdff;
+}

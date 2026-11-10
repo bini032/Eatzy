@@ -301,5 +301,80 @@
     return { situation: s.text, ideas };
   }
 
-  window.Suggest = { suggest };
+  // ---------- 상대 자동 반응 ("+ 장면" 때) ----------
+  // pos: 이번 장면 동선을 다 따라간 위치, arrows: 이번 장면 동선. 직접 동선을 준 상대 선수는 건드리지 않는다.
+  function reactAway(pos, arrows, labels) {
+    const out = { ...pos };
+    const moved = new Set(arrows.filter((a) => a.owner && a.owner[0] === 'a').map((a) => a.owner));
+    const ball = pos.ball;
+    const cap = (from, to, max) => (d(from, to) <= max ? to : toward(from, to, max));
+    const set = (k, to, max = 12) => (out[k] = clampP(cap(pos[k], to, max)));
+    const AWAY_GOAL = [34, 0];
+    let holder = null;
+    let hd = 2.5;
+    for (const k of [...H, ...A]) {
+      const dd = d(pos[k], ball);
+      if (dd < hd) {
+        hd = dd;
+        holder = k;
+      }
+    }
+    const field = A.filter((k) => labels[k] !== 'GK' && !moved.has(k));
+    const nearestFree = (p, used, max = Infinity) => {
+      let best = null;
+      let bd = max;
+      for (const k of field) {
+        if (used.has(k)) continue;
+        const dd = d(pos[k], p);
+        if (dd < bd) {
+          bd = dd;
+          best = k;
+        }
+      }
+      return best;
+    };
+    // 골키퍼: 공 쪽으로 좌우만 조금
+    const gk = A.find((k) => labels[k] === 'GK' && !moved.has(k));
+    if (gk) set(gk, [34 + (ball[0] - 34) * 0.25, pos[gk][1]], 5);
+
+    if (holder && holder[0] === 'h') {
+      const used = new Set();
+      // 1) 가장 가까운 상대가 공 가진 선수를 압박 (골대 쪽에서 2m)
+      const presser = nearestFree(ball, used);
+      if (presser) {
+        used.add(presser);
+        set(presser, toward(ball, AWAY_GOAL, 2));
+      }
+      // 2) 앞으로 뛰어 들어가는 우리 선수는 가까운 상대가 따라붙는다 (골대 쪽에서 1.5m)
+      for (const a of arrows) {
+        if (!a.owner || a.owner[0] !== 'h' || a.kind === 'pass' || a.kind === 'shot') continue;
+        const start = a.points[0];
+        const end = a.points[a.points.length - 1];
+        if (end[1] > start[1] - 5) continue; // 앞으로 5m 이상 나간 동선만
+        const k = nearestFree(end, used, 18);
+        if (!k) continue;
+        used.add(k);
+        set(k, toward(end, AWAY_GOAL, 1.5));
+      }
+      // 3) 나머지는 대형째 공 쪽으로
+      const rest = field.filter((k) => !used.has(k));
+      if (rest.length) {
+        const ax = rest.reduce((n, k) => n + pos[k][0], 0) / rest.length;
+        const ay = rest.reduce((n, k) => n + pos[k][1], 0) / rest.length;
+        const sx = (ball[0] - ax) * 0.35;
+        const sy = (ball[1] - ay) * 0.2;
+        for (const k of rest) set(k, [pos[k][0] + sx, pos[k][1] + sy], 8);
+      }
+    } else if (holder && holder[0] === 'a') {
+      // 상대 공: 공 쪽으로 조금씩 전진해 패스 받을 준비
+      for (const k of field) if (k !== holder) set(k, [pos[k][0] + (ball[0] - pos[k][0]) * 0.15, pos[k][1] + 6], 8);
+    } else {
+      // 주인 없는 공: 가장 가까운 상대가 공으로
+      const k = nearestFree(ball, new Set());
+      if (k) set(k, toward(ball, pos[k], 1));
+    }
+    return out;
+  }
+
+  window.Suggest = { suggest, reactAway };
 })();

@@ -52,6 +52,8 @@
     speed: 1,
     pick: null, // 명단에서 눌러 고른 선수 id (동그라미를 누르면 배정)
     dropKey: null, // 명단 이름표를 끄는 동안 받게 될 동그라미
+    autoReact: local.get('soccer.autoReact') !== 'off', // "+ 장면" 때 상대 자동 반응
+    view: null, // 경기장 확대 상태 { x, y, w, h } (viewBox), null이면 전체
     sug: null, // 다음 장면 추천 { mode: 'current'|'next', base, situation, ideas, i }
     roster: null, // 선수단 편집 사본
     rosterDirty: false,
@@ -218,6 +220,7 @@
     const prev = S.route;
     S.route = parseRoute();
     S.sug = null;
+    if (prev.view !== 'strategy' || prev.id !== S.route.id) S.view = null;
     if (S.route.view === 'strategy') {
       if (prev.view !== 'strategy' || prev.id !== S.route.id) {
         S.work = null;
@@ -273,8 +276,8 @@
           ? `<div class="cards">${list
               .map(
                 (s) => `<a class="card" href="#/s/${s.id}">
-                  <b>${esc(s.title)}</b>${canEditSt(s) && !S.me.admin ? ' <span class="badge">내 전술</span>' : ''}
-                  <div class="meta">${[s.author && esc(s.author), `장면 ${s.scenes.length}개`, `${esc(s.formation)} vs ${esc(s.awayFormation)}`, fmtDate(s.updatedAt)].filter(Boolean).join(' · ')}</div>
+                  <b>${esc(s.title)}</b>${s.origin === 'ai' ? ' <span class="badge ai">🤖 AI테스트</span>' : ''}${canEditSt(s) && !S.me.admin ? ' <span class="badge">내 전술</span>' : ''}
+                  <div class="meta"><span class="author">✍ ${esc(s.author || '작성자 없음')}</span> · ${[`장면 ${s.scenes.length}개`, `${esc(s.formation)} vs ${esc(s.awayFormation)}`, fmtDate(s.updatedAt)].filter(Boolean).join(' · ')}</div>
                   ${s.memo ? `<div class="memo">${esc(s.memo)}</div>` : ''}
                 </a>`
               )
@@ -348,7 +351,7 @@
     }
     const t = window.Templates.build(key);
     createStrategy(
-      { title: t.title, memo: t.memo, formation: t.formation, awayFormation: t.awayFormation, lineup: lineupFor(t.formation, t.roles), scenes: t.scenes },
+      { title: t.title, memo: t.memo, formation: t.formation, awayFormation: t.awayFormation, lineup: lineupFor(t.formation, t.roles), scenes: t.scenes, origin: 'ai' },
       '추천 전술을 만들었습니다. ▶ 재생으로 보고, 원하는 대로 고치세요.'
     );
   };
@@ -410,7 +413,8 @@
         ${ed ? `<input id="stTitle" maxlength="60" value="${esc(st.title)}" aria-label="전술 이름" />` : `<h2>${esc(st.title)}</h2>`}
         ${ed ? `<span id="saveStatus" class="status">${S.dirty ? '저장 대기' : '저장됨'}</span>` : ''}
       </div>
-      <div class="hint">${[st.author && `작성 ${esc(st.author)}`, `${esc(st.formation)} vs ${esc(st.awayFormation)}`, fmtDate(st.updatedAt)].filter(Boolean).join(' · ')}</div>
+      <div class="hint"><span class="author">✍ ${esc(st.author || '작성자 없음')}</span>${st.origin === 'ai' ? ' <span class="badge ai">🤖 AI테스트</span>' : ''} · ${[`${esc(st.formation)} vs ${esc(st.awayFormation)}`, fmtDate(st.updatedAt)].filter(Boolean).join(' · ')}</div>
+      ${st.origin === 'ai' ? '<p class="hint ai-note">AI가 시범으로 만든 추천 전술을 바탕으로 한 전술입니다. 팀에 맞게 고쳐 쓰세요.</p>' : ''}
       ${
         isEditor() && !ed
           ? `<div class="notice"><span class="grow">작성자(${esc(st.author || '알 수 없음')})만 수정할 수 있습니다.</span><button id="copyBtn" class="primary">복사해서 내 전술로</button></div>`
@@ -426,7 +430,9 @@
       ${ed ? toolBar() : ''}
       ${ed ? (S.sug ? suggestHtml() : benchHtml(st)) : ''}
 
-      <div class="pitch-wrap${ed ? ' edit' : ''}"><svg id="pitch" class="pitch ${ed ? 'editable' : ''}" viewBox="-3 -3 74 111" xmlns="http://www.w3.org/2000/svg">${fieldSvg()}<g id="dyn"></g></svg></div>
+      <div class="pitch-wrap${ed ? ' edit' : ''}"><svg id="pitch" class="pitch ${ed ? 'editable' : ''}" viewBox="${viewBoxText()}" xmlns="http://www.w3.org/2000/svg">${fieldSvg()}<g id="dyn"></g></svg>
+        <div class="zoom"><button data-zoom="in" aria-label="확대">＋</button><button data-zoom="out" aria-label="축소">－</button><button data-zoom="reset" aria-label="전체 보기">⤢</button></div>
+      </div>
       <div class="legend">
         <span><i class="dot" style="background:var(--home)"></i>우리 팀 (위로 공격)</span>
         <span><i class="dot" style="background:var(--away)"></i>상대 팀</span>
@@ -497,11 +503,8 @@
     const sc = st.scenes[S.scene];
     // 동선이 있으면 그 끝 위치에서 이어지는 다음 장면, 없으면 이 장면에 넣을 동선을 추천
     const mode = sc.arrows.length ? 'next' : 'current';
-    const base = mode === 'next' ? nextPositions(sc) : Object.fromEntries(KEYS.map((k) => [k, getPos(sc, k)]));
-    const labels = {};
-    st.lineup.forEach((l, i) => (labels['h' + i] = l.pos));
-    st.awayLineup.forEach((l, i) => (labels['a' + i] = l.pos));
-    const r = window.Suggest.suggest(base, labels);
+    const base = mode === 'next' ? nextScenePositions(st, sc) : Object.fromEntries(KEYS.map((k) => [k, getPos(sc, k)]));
+    const r = window.Suggest.suggest(base, labelsOf(st));
     S.sug = { mode, base, situation: r.situation, ideas: r.ideas, note: r.note, i: 0 };
     renderStrategy();
   }
@@ -518,11 +521,11 @@
     if (g.mode === 'current') {
       sc.arrows.push(...arrows);
       if (!sc.title) sc.title = idea.title;
-      if (!sc.memo) sc.memo = idea.desc;
+      if (!sc.memo) sc.memo = `[AI테스트 추천] ${idea.desc}`;
     } else {
       const next = clone(sc);
       for (const k of KEYS) setPos(next, k, g.base[k]);
-      Object.assign(next, { id: Math.random().toString(36).slice(2, 12), title: idea.title, memo: idea.desc, arrows });
+      Object.assign(next, { id: Math.random().toString(36).slice(2, 12), title: idea.title, memo: `[AI테스트 추천] ${idea.desc}`, arrows });
       st.scenes.splice(S.scene + 1, 0, next);
       S.scene += 1;
       sceneHash(S.scene);
@@ -575,6 +578,7 @@
       <h3>장면 ${S.scene + 1}</h3>
       <div class="row"><input id="scTitle" class="grow" maxlength="40" placeholder="장면 이름 (예: 빌드업)" value="${esc(sc.title)}" /></div>
       <textarea id="scMemo" rows="3" maxlength="1000" placeholder="이 장면 설명 (재생할 때 함께 보입니다)" style="margin-top:6px">${esc(sc.memo)}</textarea>
+      <label class="check" style="margin-top:8px"><input id="autoReact" type="checkbox" ${S.autoReact ? 'checked' : ''} /> “+ 장면” 때 상대 자동 반응 (공 압박, 침투 선수 따라붙기, 대형 이동)</label>
       <div class="row" style="margin-top:6px">
         <button id="clearArrows" class="grow">이 장면 선 모두 지우기</button>
         <button id="delScene" class="danger grow" ${st.scenes.length > 1 ? '' : 'disabled'}>장면 삭제</button>
@@ -623,6 +627,7 @@
       e.target.textContent = S.speed + 'x';
     };
     $('#linkBtn').onclick = copyLink;
+    bindZoom();
     const cb = $('#copyBtn');
     if (cb) cb.onclick = () => copyStrategy(st);
     bindPitch();
@@ -671,6 +676,10 @@
     };
     $('#addScene').onclick = addScene;
     bindSuggest();
+    $('#autoReact').onchange = (e) => {
+      S.autoReact = e.target.checked;
+      local.set('soccer.autoReact', S.autoReact ? 'on' : 'off');
+    };
     $('#homeF').onchange = (e) => applyFormation('home', e.target.value);
     $('#awayF').onchange = (e) => applyFormation('away', e.target.value);
     $('#delStrategy').onclick = deleteStrategy;
@@ -796,6 +805,19 @@
     renderStrategy();
   }
 
+  function labelsOf(st) {
+    const labels = {};
+    st.lineup.forEach((l, i) => (labels['h' + i] = l.pos));
+    st.awayLineup.forEach((l, i) => (labels['a' + i] = l.pos));
+    return labels;
+  }
+
+  // 이 장면 동선을 따라간 다음 위치. 상대 자동 반응이 켜져 있으면 상대도 움직인다
+  function nextScenePositions(st, sc) {
+    const pos = nextPositions(sc);
+    return S.autoReact ? window.Suggest.reactAway(pos, sc.arrows, labelsOf(st)) : pos;
+  }
+
   function addScene() {
     stopPlay();
     S.sug = null;
@@ -803,7 +825,7 @@
     const sc = S.work.scenes[S.scene];
     if (S.work.scenes.length >= 30) return toast('장면은 30개까지 만들 수 있습니다.');
     const next = clone(sc);
-    const pos = nextPositions(sc);
+    const pos = nextScenePositions(S.work, sc);
     for (const k of KEYS) setPos(next, k, pos[k]);
     next.id = Math.random().toString(36).slice(2, 12);
     next.title = '';
@@ -814,7 +836,11 @@
     sceneHash(S.scene);
     changed();
     renderStrategy();
-    toast(sc.arrows.length ? '동선 끝 위치로 옮긴 다음 장면을 만들었습니다.' : '같은 위치로 다음 장면을 만들었습니다.');
+    toast(
+      (sc.arrows.length ? '동선 끝 위치로 옮긴 다음 장면을 만들었습니다.' : '다음 장면을 만들었습니다.') +
+        (S.autoReact ? ' 상대도 자동으로 움직였습니다 (마음에 안 들면 ↶ 취소).' : ''),
+      3500
+    );
   }
 
   function applyFormation(side, name) {
@@ -1007,6 +1033,41 @@
     return ball;
   }
 
+  // ---------- 경기장 확대 (viewBox) ----------
+  const FULL = { x: -3, y: -3, w: 74, h: 111 };
+  const viewBoxText = () => {
+    const v = S.view || FULL;
+    return `${v.x.toFixed(2)} ${v.y.toFixed(2)} ${v.w.toFixed(2)} ${v.h.toFixed(2)}`;
+  };
+  // 확대 배율 1~3배, 경기장 밖으로 나가지 않게
+  function setView(cx, cy, w) {
+    w = Math.max(FULL.w / 3, Math.min(FULL.w, w));
+    const h = (w * FULL.h) / FULL.w;
+    const x = Math.max(FULL.x, Math.min(FULL.x + FULL.w - w, cx - w / 2));
+    const y = Math.max(FULL.y, Math.min(FULL.y + FULL.h - h, cy - h / 2));
+    S.view = w >= FULL.w - 0.01 ? null : { x, y, w, h };
+    const svg = $('#pitch');
+    if (svg) svg.setAttribute('viewBox', viewBoxText());
+  }
+  function zoomBy(factor, cx, cy) {
+    const v = S.view || FULL;
+    if (cx == null) {
+      cx = v.x + v.w / 2;
+      cy = v.y + v.h / 2;
+    }
+    setView(cx, cy, v.w / factor);
+  }
+  function bindZoom() {
+    const z = $('.zoom');
+    if (!z) return;
+    z.onclick = (e) => {
+      const b = e.target.closest('[data-zoom]');
+      if (!b) return;
+      if (b.dataset.zoom === 'reset') setView(34, 52.5, FULL.w);
+      else zoomBy(b.dataset.zoom === 'in' ? 1.5 : 1 / 1.5);
+    };
+  }
+
   function svgPoint(svg, e) {
     const pt = svg.createSVGPoint();
     pt.x = e.clientX;
@@ -1182,7 +1243,67 @@
       return;
     }
 
+    // 두 손가락이면 진행 중인 끌기를 취소하고 확대·이동
+    const touches = new Map();
+    let pinch = null;
+    const screenToSvg = (x, y, v) => {
+      const r = svg.getBoundingClientRect();
+      return [v.x + ((x - r.left) / r.width) * v.w, v.y + ((y - r.top) / r.height) * v.h];
+    };
+    const startPinch = () => {
+      if (S.drag) {
+        // 손가락 하나로 하던 끌기는 없던 일로
+        const prev = S.undo.pop();
+        if (prev && S.drag.moved && !S.drag.flow) {
+          const rev = S.work.rev;
+          S.work = JSON.parse(prev);
+          S.work.rev = rev;
+        }
+        S.drag = null;
+      }
+      S.draw = null;
+      const [a, b] = [...touches.values()];
+      const v = S.view || FULL;
+      const cx = (a.x + b.x) / 2;
+      const cy = (a.y + b.y) / 2;
+      pinch = { d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, v0: { ...v }, c: screenToSvg(cx, cy, v), cx0: cx, cy0: cy };
+      drawDyn();
+    };
     svg.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'touch') {
+        touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (touches.size === 2) {
+          startPinch();
+          return;
+        }
+        if (touches.size > 2 || pinch) return;
+      }
+    });
+    svg.addEventListener('pointermove', (e) => {
+      if (!touches.has(e.pointerId)) return;
+      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (!pinch || touches.size < 2) return;
+      const [a, b] = [...touches.values()];
+      const scale = Math.hypot(a.x - b.x, a.y - b.y) / pinch.d0;
+      const w = Math.max(FULL.w / 3, Math.min(FULL.w, pinch.v0.w / scale));
+      const h = (w * FULL.h) / FULL.w;
+      // 두 손가락 가운데 아래의 경기장 지점이 손가락을 따라오게
+      const r = svg.getBoundingClientRect();
+      const cx = (a.x + b.x) / 2;
+      const cy = (a.y + b.y) / 2;
+      const x = pinch.c[0] - ((cx - r.left) / r.width) * w;
+      const y = pinch.c[1] - ((cy - r.top) / r.height) * h;
+      setView(x + w / 2, y + h / 2, w);
+    });
+    const lift = (e) => {
+      touches.delete(e.pointerId);
+      if (pinch && touches.size === 0) pinch = null;
+    };
+    svg.addEventListener('pointerup', lift);
+    svg.addEventListener('pointercancel', lift);
+
+    svg.addEventListener('pointerdown', (e) => {
+      if (pinch || touches.size > 1) return;
       if (S.play || (e.pointerType === 'mouse' && e.button !== 0)) return;
       if (S.sug) return toast('추천을 적용(✓)하거나 닫은(✕) 뒤에 편집하세요.');
       const sc = S.work.scenes[S.scene];
@@ -1247,7 +1368,7 @@
     });
 
     svg.addEventListener('pointermove', (e) => {
-      if (!S.drag && !S.draw) return;
+      if (pinch || (!S.drag && !S.draw)) return;
       const p = svgPoint(svg, e);
       if (S.drag) {
         // 손가락이 살짝 흔들린 것은 누르기로 본다
