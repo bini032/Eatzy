@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f3d24" />
+    <title>축구 전술 보드</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="top">
+      <button id="backBtn" class="icon-btn" hidden aria-label="목록으로">‹</button>
+      <h1 id="teamName">축구 전술 보드</h1>
+      <button id="lockBtn" class="lock">🔒 보기</button>
+    </header>
+
+    <nav id="tabs" class="tabs">
+      <a href="#/" data-tab="list">전술</a>
+      <a href="#/roster" data-tab="roster">선수단</a>
+    </nav>
+
+    <main id="view"></main>
+
+    <div id="toast" class="toast" hidden></div>
+
+    <dialog id="loginDlg">
+      <form method="dialog" id="loginForm">
+        <h2>전략 제시자 로그인</h2>
+        <p class="hint">비밀번호를 입력하면 전술을 추가·수정할 수 있습니다. 보기는 누구나 할 수 있습니다.</p>
+        <label>이름 (전술 작성자로 표시)<input id="loginName" maxlength="30" autocomplete="nickname" /></label>
+        <label>편집 비밀번호<input id="loginPass" type="password" autocomplete="current-password" required /></label>
+        <label class="check"><input id="loginRemember" type="checkbox" checked /> 이 기기에서 기억하기</label>
+        <p id="loginErr" class="err" hidden></p>
+        <div class="row end">
+          <button type="button" id="loginCancel" class="ghost">취소</button>
+          <button type="submit" class="primary">확인</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="formations.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
