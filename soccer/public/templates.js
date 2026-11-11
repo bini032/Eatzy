@@ -11,7 +11,11 @@
     F.positions(def.formation, 'home').forEach((p, i) => (pos['h' + i] = [p.x, p.y]));
     F.positions(def.awayFormation, 'away').forEach((p, i) => (pos['a' + i] = [p.x, p.y]));
     Object.assign(pos, def.setup || {});
+    // snapshot: 이 장면이 끝난 위치를 저장, restore: 저장한 위치에서 다시 시작 (옵션 장면용)
+    const snaps = {};
+    const copyPos = (p) => Object.fromEntries(Object.entries(p).map(([k, v]) => [k, v.slice()]));
     const scenes = def.scenes.map((sc) => {
+      if (sc.restore && snaps[sc.restore]) Object.assign(pos, copyPos(snaps[sc.restore]));
       Object.assign(pos, sc.place || {});
       const arrows = (sc.arrows || []).map(([kind, owner, ...pts]) => {
         const isPass = kind === 'pass' || kind === 'shot'; // 공이 주인
@@ -37,6 +41,7 @@
         if (a.owner) pos[a.owner] = end;
         if (a.withBall) pos.ball = end;
       }
+      if (sc.snapshot) snaps[sc.snapshot] = copyPos(pos);
       return scene;
     });
     return {
@@ -45,11 +50,102 @@
       formation: def.formation,
       awayFormation: def.awayFormation,
       roles: def.roles || {},
+      origin: def.origin || 'ai',
       scenes,
     };
   }
 
   const TEMPLATES = [
+    {
+      key: 'coach-box',
+      origin: 'coach',
+      title: '코치 전술: 박스 미드 → 측면 공략',
+      summary: '톱 둘 + 중미 둘이 박스를 만들어 가운데 숫자 싸움을 이기고, 측면 미드가 올라가 생긴 공간으로 톱이 받아 측면으로 연결',
+      formation: '4-4-2',
+      awayFormation: '4-2-3-1',
+      memo:
+        '우리 코치 아이디어를 AI가 장면으로 옮긴 전술입니다. 위치와 동선은 코치 확인 후 고쳐 주세요.\n' +
+        '1) 측면 미드(LM/RM)는 높이 올라가 상대 풀백을 묶는다.\n' +
+        '2) 톱 둘과 중미 둘이 박스(사각형)를 만들어 상대 DM 둘 + AM과의 숫자 싸움에서 이긴다.\n' +
+        '3) 측면 미드가 올라가 생긴 바깥 공간으로 톱이 움직여 공을 받고, 측면 미드에게 전달한다.\n' +
+        '4) 측면 미드의 선택: ① 1:1 돌파 ② 잠시 기다렸다가 톱이나 중미가 올라오면 전방·중앙으로 패스 ③ 안쪽으로 들어가고 활동량 좋은 윙백이 바깥으로 빠져 패스 선택지를 늘린다.\n' +
+        '※ 오른쪽도 같은 방식 (ST 10 → RM, RB 오버래핑).',
+      roles: {
+        5: '높이 올라가 상대 풀백을 묶기. 공 받으면 1:1 / 기다렸다가 전방·중앙 패스 / 안쪽으로 들어가기',
+        8: '오른쪽에서 같은 역할 (높이, 넓게)',
+        9: '박스 위 꼭짓점. 측면 미드가 올라가 생긴 바깥 공간으로 이동해 받기',
+        10: '박스 위 꼭짓점. 오른쪽 바깥 공간으로 이동해 받기',
+        6: '박스 아래 꼭짓점. 공 돌리며 숫자 싸움, 측면 지원하러 올라가기',
+        7: '박스 아래 꼭짓점. 공 돌리며 숫자 싸움',
+        1: '측면 미드가 안으로 들어가면 바깥으로 오버래핑 (활동량)',
+        4: '오른쪽 오버래핑 (활동량)',
+        2: '넓게 벌려 빌드업 시작',
+        3: '넓게 벌려 빌드업 시작',
+      },
+      ball: [34, 101],
+      setup: {
+        h0: [34, 101],
+        a0: [34, 8], a1: [51, 41.5], a2: [40.5, 39.5], a3: [24, 39.5], a4: [13, 41.5],
+        a5: [41.5, 57], a6: [24.5, 57], a7: [59, 76.5], a8: [33.7, 66.6], a9: [9.8, 76.5], a10: [33.7, 78],
+      },
+      scenes: [
+        {
+          title: '박스 만들기',
+          memo: '측면 미드는 높이 올라가 상대 풀백을 묶고, 톱 둘과 중미 둘이 박스를 만든다. CB는 넓게 벌리고 GK가 왼쪽 CB에게.',
+          arrows: [
+            ['run', 'h5', [6, 60], [4, 45]],
+            ['run', 'h8', [62, 60], [64, 45]],
+            ['run', 'h9', [18, 57]],
+            ['run', 'h10', [51, 57]],
+            ['run', 'h6', [24, 75]],
+            ['run', 'h7', [45, 76]],
+            ['run', 'h1', [4, 77]],
+            ['run', 'h4', [64, 77]],
+            ['run', 'h2', [16, 89]],
+            ['run', 'h3', [52, 89]],
+            ['pass', null, [16, 89]],
+          ],
+        },
+        {
+          title: '박스 안 숫자 싸움',
+          memo: '가운데는 우리 4명(톱 둘 + 중미 둘) 대 상대 3명(DM 둘 + AM). CB가 박스 아래 꼭짓점 중미에게.',
+          arrows: [['pass', null, [24, 75]], ['run', 'a10', [22, 84]], ['run', 'a8', [30, 69]]],
+        },
+        {
+          title: '톱이 바깥 공간으로 → 받기',
+          memo: '측면 미드가 올라가 생긴 바깥 공간(보라색 부분)으로 톱이 움직이고, 중미가 그 톱에게 연결.',
+          arrows: [['run', 'h9', [12, 60], [9, 62]], ['pass', null, [9, 62]]],
+        },
+        {
+          title: '측면 미드에게 전달',
+          memo: '톱이 높이 있는 측면 미드에게 공을 보낸다. 상대 풀백이 측면 미드에게 붙으러 나온다.',
+          snapshot: 'wide',
+          arrows: [['run', 'h5', [6, 47]], ['pass', null, [6, 47]], ['run', 'a4', [9, 44]]],
+        },
+        {
+          title: '옵션 ① 1:1 돌파',
+          memo: '수비 한 명만 붙었으면 측면 미드가 1:1로 돌파.',
+          arrows: [['dribble', 'h5', [11, 40], [6, 30]], ['run', 'a4', [8, 34]]],
+        },
+        {
+          title: '옵션 ② 기다렸다가 중앙으로 (4장면에서 다시)',
+          memo: '잠시 공을 지키며 기다리고, 톱이나 중미가 올라오면 전방(톱) 또는 중앙(중미)으로 패스. 여기서는 올라온 중미에게.',
+          restore: 'wide',
+          arrows: [['run', 'h9', [14, 50], [18, 38]], ['run', 'h6', [26, 52]], ['pass', null, [26, 52]]],
+        },
+        {
+          title: '옵션 ③ 안쪽으로 + 윙백 오버래핑 (4장면에서 다시)',
+          memo: '측면 미드가 안쪽으로 들어가면 활동량 좋은 윙백(LB)이 바깥으로 빠져 패스 선택지를 늘린다.',
+          restore: 'wide',
+          arrows: [['dribble', 'h5', [15, 40]], ['run', 'h1', [3, 60], [4, 36]], ['run', 'h9', [18, 48]]],
+        },
+        {
+          title: '오버래핑한 윙백에게 패스',
+          memo: '바깥으로 올라온 윙백에게 패스 → 크로스 또는 컷백.',
+          arrows: [['pass', null, [4, 36]]],
+        },
+      ],
+    },
     {
       key: 'overlap',
       title: '측면 오버래핑 → 크로스',
@@ -386,7 +482,7 @@
   ];
 
   window.Templates = {
-    list: TEMPLATES.map((t) => ({ key: t.key, title: t.title, summary: t.summary, formation: t.formation, scenes: t.scenes.length })),
+    list: TEMPLATES.map((t) => ({ key: t.key, title: t.title, summary: t.summary, formation: t.formation, scenes: t.scenes.length, origin: t.origin || 'ai' })),
     build: (key) => {
       const t = TEMPLATES.find((x) => x.key === key);
       return t ? build(t) : null;

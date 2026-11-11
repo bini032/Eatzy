@@ -659,25 +659,19 @@ label.check input {
   line-height: 1.4;
 }
 
-/* 경기장 확대 버튼 */
+/* 경기장 확대 버튼 (경기장 아래 줄, 선수를 가리지 않게) */
 .pitch-wrap {
   position: relative;
 }
 .zoom {
-  position: absolute;
-  right: 6px;
-  bottom: 6px;
   display: flex;
-  flex-direction: column;
   gap: 4px;
 }
 .zoom button {
-  width: 34px;
-  height: 34px;
+  width: 40px;
+  height: 40px;
   min-height: 0;
   padding: 0;
-  border-radius: 8px;
-  background: rgba(8, 22, 14, 0.75);
   font-size: 17px;
   line-height: 1;
 }
@@ -757,4 +751,9 @@ label.check input {
   background: #ff3b30;
   border-radius: 8px;
   padding: 1px 6px;
+}
+
+.badge.coach {
+  background: #1f9d6b;
+  color: #fff;
 }

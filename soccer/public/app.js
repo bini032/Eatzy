@@ -291,6 +291,10 @@
     updateManualDot();
   }
 
+  // 출처 배지: AI가 만든 추천 전술 / 코치 아이디어를 옮긴 전술
+  const originBadge = (o) =>
+    o === 'ai' ? ' <span class="badge ai">🤖 AI테스트</span>' : o === 'coach' ? ' <span class="badge coach">📋 코치 아이디어</span>' : '';
+
   function fmtDate(iso) {
     const d = new Date(iso);
     if (isNaN(d)) return '';
@@ -309,7 +313,7 @@
           ? `<div class="cards">${list
               .map(
                 (s) => `<a class="card" href="#/s/${s.id}">
-                  <b>${esc(s.title)}</b>${s.origin === 'ai' ? ' <span class="badge ai">🤖 AI테스트</span>' : ''}${canEditSt(s) && !S.me.admin ? ' <span class="badge">내 전술</span>' : ''}
+                  <b>${esc(s.title)}</b>${originBadge(s.origin)}${canEditSt(s) && !S.me.admin ? ' <span class="badge">내 전술</span>' : ''}
                   <div class="meta"><span class="author">✍ ${esc(s.author || '작성자 없음')}</span> · ${[`장면 ${s.scenes.length}개`, `${esc(s.formation)} vs ${esc(s.awayFormation)}`, fmtDate(s.updatedAt)].filter(Boolean).join(' · ')}</div>
                   ${s.memo ? `<div class="memo">${esc(s.memo)}</div>` : ''}
                 </a>`
@@ -363,7 +367,7 @@
     $('#tplList').innerHTML = items
       .map(
         (t) => `<button type="button" class="tpl" data-key="${t.key}">
-          <b>${t.key ? '⭐ ' : '＋ '}${esc(t.title)}</b>
+          <b>${!t.key ? '＋ ' : t.origin === 'coach' ? '📋 ' : '⭐ '}${esc(t.title)}</b>
           <span>${esc(t.summary)}</span>
           ${t.key ? `<small>${esc(t.formation)} · 장면 ${t.scenes}개</small>` : ''}
         </button>`
@@ -384,7 +388,7 @@
     }
     const t = window.Templates.build(key);
     createStrategy(
-      { title: t.title, memo: t.memo, formation: t.formation, awayFormation: t.awayFormation, lineup: lineupFor(t.formation, t.roles), scenes: t.scenes, origin: 'ai' },
+      { title: t.title, memo: t.memo, formation: t.formation, awayFormation: t.awayFormation, lineup: lineupFor(t.formation, t.roles), scenes: t.scenes, origin: t.origin },
       '추천 전술을 만들었습니다. ▶ 재생으로 보고, 원하는 대로 고치세요.'
     );
   };
@@ -446,8 +450,14 @@
         ${ed ? `<input id="stTitle" maxlength="60" value="${esc(st.title)}" aria-label="전술 이름" />` : `<h2>${esc(st.title)}</h2>`}
         ${ed ? `<span id="saveStatus" class="status">${S.dirty ? '저장 대기' : '저장됨'}</span>` : ''}
       </div>
-      <div class="hint"><span class="author">✍ ${esc(st.author || '작성자 없음')}</span>${st.origin === 'ai' ? ' <span class="badge ai">🤖 AI테스트</span>' : ''} · ${[`${esc(st.formation)} vs ${esc(st.awayFormation)}`, fmtDate(st.updatedAt)].filter(Boolean).join(' · ')}</div>
-      ${st.origin === 'ai' ? '<p class="hint ai-note">AI가 시범으로 만든 추천 전술을 바탕으로 한 전술입니다. 팀에 맞게 고쳐 쓰세요.</p>' : ''}
+      <div class="hint"><span class="author">✍ ${esc(st.author || '작성자 없음')}</span>${originBadge(st.origin)} · ${[`${esc(st.formation)} vs ${esc(st.awayFormation)}`, fmtDate(st.updatedAt)].filter(Boolean).join(' · ')}</div>
+      ${
+        st.origin === 'ai'
+          ? '<p class="hint ai-note">AI가 시범으로 만든 추천 전술을 바탕으로 한 전술입니다. 팀에 맞게 고쳐 쓰세요.</p>'
+          : st.origin === 'coach'
+            ? '<p class="hint ai-note">코치 아이디어를 AI가 장면으로 옮긴 전술입니다. 코치 확인 후 고쳐 쓰세요.</p>'
+            : ''
+      }
       ${
         isEditor() && !ed
           ? `<div class="notice"><span class="grow">작성자(${esc(st.author || '알 수 없음')})만 수정할 수 있습니다.</span><button id="copyBtn" class="primary">복사해서 내 전술로</button></div>`
@@ -464,7 +474,6 @@
       ${ed ? (S.sug ? suggestHtml() : benchHtml(st)) : ''}
 
       <div class="pitch-wrap${ed ? ' edit' : ''}"><svg id="pitch" class="pitch ${ed ? 'editable' : ''}" viewBox="${viewBoxText()}" xmlns="http://www.w3.org/2000/svg">${fieldSvg()}<g id="dyn"></g></svg>
-        <div class="zoom"><button data-zoom="in" aria-label="확대">＋</button><button data-zoom="out" aria-label="축소">－</button><button data-zoom="reset" aria-label="전체 보기">⤢</button></div>
       </div>
       <div class="legend">
         <span><i class="dot" style="background:var(--home)"></i>우리 팀 (위로 공격)</span>
@@ -475,8 +484,8 @@
         <span><i style="border-color:var(--shot);border-top-width:4px"></i>슛</span>
       </div>
       <div class="row end" style="margin-top:6px">
-        <span class="hint grow" style="margin:0">재생 속도</span>
-        <button id="speedBtn">${S.speed}x</button>
+        <span class="zoom grow"><button data-zoom="in" aria-label="확대">＋</button><button data-zoom="out" aria-label="축소">－</button><button data-zoom="reset" aria-label="전체 보기">⤢</button></span>
+        <button id="speedBtn" title="재생 속도">▶ ${S.speed}x</button>
         <button id="linkBtn" title="이 전술 링크 복사">🔗 링크 복사</button>
       </div>
 
@@ -657,7 +666,7 @@
     $('#playBtn').onclick = () => (S.play ? stopPlay() : startPlay());
     $('#speedBtn').onclick = (e) => {
       S.speed = SPEEDS[(SPEEDS.indexOf(S.speed) + 1) % SPEEDS.length];
-      e.target.textContent = S.speed + 'x';
+      e.target.textContent = `▶ ${S.speed}x`;
     };
     $('#linkBtn').onclick = copyLink;
     bindZoom();

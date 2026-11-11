@@ -93,7 +93,7 @@ function strategy(input, playerIds) {
     memo: text(s.memo, 3000),
     formation,
     awayFormation,
-    origin: s.origin === 'ai' ? 'ai' : '', // 'ai': 추천 전술(AI테스트)로 만든 전술
+    origin: ['ai', 'coach'].includes(s.origin) ? s.origin : '', // 'ai': AI 추천 전술, 'coach': 코치 아이디어를 옮긴 전술
     lineup,
     awayLineup,
     scenes: scenesIn.map((sc) => scene(sc, homeDefault, awayDefault)),
