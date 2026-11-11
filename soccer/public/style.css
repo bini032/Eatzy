@@ -273,7 +273,7 @@ h3 {
   margin: 0 auto;
 }
 .pitch-wrap.edit {
-  max-width: calc((100dvh - 265px) * 74 / 111);
+  max-width: calc((100dvh - 277px) * 74 / 111);
 }
 
 /* 선수 명단 이름표 (끌어서 동그라미에 놓기) */
@@ -804,4 +804,47 @@ label.check input {
 }
 .pos-sum b {
   color: var(--accent);
+}
+
+/* 누르기 두 번 동선: 할 일 줄 (높이 고정이라 경기장이 움직이지 않음) */
+.actbar {
+  height: 46px;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+}
+.actbar .tool-hint {
+  margin: 0;
+}
+.act {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.act .who {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  max-width: 30%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  flex: none;
+}
+.act .ask {
+  font-size: 13px;
+}
+.act button {
+  flex: none;
+  min-height: 40px;
+  padding: 4px 8px;
+  font-size: 13px;
+}
+.token.cand circle.body {
+  stroke: var(--accent);
+  stroke-width: 0.5;
+  stroke-dasharray: 0.7 0.5;
 }

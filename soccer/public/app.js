@@ -51,6 +51,8 @@
     play: null,
     speed: 1,
     pick: null, // 명단에서 눌러 고른 선수 id (동그라미를 누르면 배정)
+    sel: null, // 동선 모드에서 누른 선수 { key, action: null | 'run' | 'dribble' | 'pass' }
+    dest: null, // 할 일을 고른 뒤 누른 곳
     dropKey: null, // 명단 이름표를 끄는 동안 받게 될 동그라미
     autoReact: local.get('soccer.autoReact') !== 'off', // "+ 장면" 때 상대 자동 반응
     view: null, // 경기장 확대 상태 { x, y, w, h } (viewBox), null이면 전체
@@ -221,6 +223,7 @@
     const prev = S.route;
     S.route = parseRoute();
     S.sug = null;
+    S.sel = null;
     if (prev.view !== 'strategy' || prev.id !== S.route.id) S.view = null;
     if (S.route.view === 'strategy') {
       if (prev.view !== 'strategy' || prev.id !== S.route.id) {
@@ -585,7 +588,128 @@
         ${toolBtn('erase', '🧽<small>지우기</small>', '선 지우기')}
         <button id="undoBtn" title="되돌리기" ${S.undo.length ? '' : 'disabled'}>↶<small>취소</small></button>
       </div>
-      <p class="hint tool-hint" id="toolHint">${toolHint()}</p>`;
+      <div class="actbar" id="actbar">${actbarHtml()}</div>`;
+  }
+
+  // ---------- 누르기 두 번으로 동선: 선수 누르기 → 할 일 고르기 → 갈 곳·받을 선수 누르기 ----------
+  function selWho(k) {
+    if (k === 'ball') return '공';
+    const t = tokenInfo(S.work, k, playersById());
+    return `${k[0] === 'h' ? '우리' : '상대'} ${t.pos}${t.name ? ' ' + t.name : ''}`;
+  }
+
+  function actbarHtml() {
+    if (S.tool !== 'flow' || !S.sel || !S.work) return `<p class="hint tool-hint">${esc(toolHint())}</p>`;
+    const sc = S.work.scenes[S.scene];
+    const k = S.sel.key;
+    const who = `<span class="who">${esc(selWho(k))}</span>`;
+    if (S.sel.action) {
+      const ask = { run: '갈 곳을 누르세요', dribble: '드리블로 갈 곳을 누르세요', pass: '받을 선수(점선)나 보낼 곳을 누르세요' }[S.sel.action];
+      return `<div class="act">${who}<span class="ask grow">👉 ${ask}</span><button data-act="back">취소</button></div>`;
+    }
+    // 공 가진 선수: 패스·슛·드리블 (이미 패스·슛을 했으면 그 뒤에 뛰는 달리기도)
+    const withBall = k === 'ball' || ballHolder(sc) === k;
+    const ballGone = sc.arrows.some((a) => a.owner === 'ball');
+    let btns;
+    if (k === 'ball') btns = [['pass', '⚽ 보내기'], ['shot', '🥅 슛']];
+    else if (withBall) btns = [['pass', '⚽ 패스'], ['shot', '🥅 슛'], ['dribble', '🏃 드리블'], ...(ballGone ? [['run', '🏃 달리기']] : [])];
+    else btns = [['run', '🏃 달리기']];
+    const hasLine = sc.arrows.some((a) => a.owner === k || (withBall && a.owner === 'ball'));
+    return `<div class="act">${who}${btns.map(([a, l]) => `<button data-act="${a}" class="primary">${l}</button>`).join('')}${
+      k !== 'ball' ? '<button data-act="name" title="이름·역할">✏️</button>' : ''
+    }${hasLine ? '<button data-act="clear" title="이 선수 선 지우기">🧽</button>' : ''}<button data-act="close" title="선택 해제">✕</button></div>`;
+  }
+
+  function refreshActbar() {
+    const bar = $('#actbar');
+    if (bar) bar.innerHTML = actbarHtml();
+    drawDyn();
+  }
+
+  function selectToken(k) {
+    const sc = S.work.scenes[S.scene];
+    if (k === 'ball') k = ballHolder(sc) || 'ball'; // 공을 누르면 공 가진 선수
+    S.sel = { key: k, action: null };
+    refreshActbar();
+  }
+
+  const roundPt = (q) => [Math.round(q[0] * 10) / 10, Math.round(q[1] * 10) / 10];
+
+  function doShot(key) {
+    const sc = S.work.scenes[S.scene];
+    const team = key === 'ball' ? (ballHolder(sc) || 'h')[0] : key[0];
+    const from = sc.ball;
+    // 우리 팀은 위쪽 골문, 상대는 아래쪽 골문. 공에서 먼 쪽 골포스트 안쪽으로
+    const end = [from[0] < 34 ? 36.5 : 31.5, team === 'h' ? -1 : 106];
+    pushUndo();
+    sc.arrows = sc.arrows.filter((a) => a.owner !== 'ball');
+    sc.arrows.push({ id: Math.random().toString(36).slice(2, 12), kind: 'shot', owner: 'ball', withBall: false, points: [from, end].map(roundPt) });
+    S.sel = null;
+    changed();
+    refreshActbar();
+    toast('슛', 1500);
+  }
+
+  // 할 일을 고른 뒤 누른 곳 처리
+  function doAction(p) {
+    const sc = S.work.scenes[S.scene];
+    const { key, action } = S.sel;
+    const id = Math.random().toString(36).slice(2, 12);
+    let msg;
+    if (action === 'pass') {
+      const rcv = passReceiver(sc, p);
+      const end = rcv ? arrivalOf(sc, rcv) : p;
+      if (dist(end, sc.ball) < 2) return toast('조금 더 떨어진 곳을 누르세요.');
+      pushUndo();
+      sc.arrows = sc.arrows.filter((a) => a.owner !== 'ball');
+      sc.arrows.push({ id, kind: 'pass', owner: 'ball', withBall: false, points: [sc.ball, end].map(roundPt) });
+      msg = rcv ? `${selWho(rcv)}에게 패스` : '빈 공간으로 패스';
+    } else {
+      const from = getPos(sc, key);
+      if (dist(p, from) < 2) return toast('조금 더 떨어진 곳을 누르세요.');
+      pushUndo();
+      const withBall = action === 'dribble';
+      const oldArrival = arrivalOf(sc, key);
+      // 드리블이면 공이 같이 가므로 기존 패스·슛은 지운다
+      sc.arrows = sc.arrows.filter((a) => a.owner !== key && !(withBall && a.owner === 'ball'));
+      sc.arrows.push({ id, kind: withBall ? 'dribble' : 'run', owner: key, withBall, points: [from, p].map(roundPt) });
+      // 이 선수에게 가던 패스는 새 도착 지점으로 따라간다
+      for (const a of sc.arrows) {
+        if (a.owner === 'ball' && a.kind === 'pass' && dist(a.points[a.points.length - 1], oldArrival) < 1) a.points[a.points.length - 1] = roundPt(p);
+      }
+      msg = withBall ? '드리블' : '달리기';
+    }
+    S.sel = null;
+    changed();
+    refreshActbar();
+    toast(msg, 1500);
+  }
+
+  function bindActbar() {
+    const bar = $('#actbar');
+    if (!bar) return;
+    bar.onclick = (e) => {
+      const b = e.target.closest('[data-act]');
+      if (!b || !S.sel) return;
+      const act = b.dataset.act;
+      const key = S.sel.key;
+      if (act === 'close') S.sel = null;
+      else if (act === 'back') S.sel.action = null;
+      else if (act === 'name') {
+        S.sel = null;
+        refreshActbar();
+        return openTokenDlg(key);
+      } else if (act === 'shot') return doShot(key);
+      else if (act === 'clear') {
+        const sc = S.work.scenes[S.scene];
+        pushUndo();
+        const withBall = key === 'ball' || hasBallNow(sc, key) || ballHolder(sc) === key;
+        sc.arrows = sc.arrows.filter((a) => a.owner !== key && !(withBall && a.owner === 'ball'));
+        S.sel = null;
+        changed();
+      } else S.sel.action = act;
+      refreshActbar();
+    };
   }
 
   // ---------- 상황별 다음 장면 추천 (규칙 기반, suggest.js) ----------
@@ -701,7 +825,7 @@
 
   function toolHint() {
     return {
-      flow: '선수를 끌면 달리기(공 가진 선수는 드리블), 공을 끌어 동료 근처에 놓으면 패스, 골문 앞에 놓으면 슛. 다시 끌면 바뀝니다.',
+      flow: '① 선수를 누르고 ② 달리기·패스·슛 중 고른 뒤 ③ 갈 곳이나 받을 선수를 누르세요. (끌어서 그려도 됩니다)',
       move: '동선 없이 선수와 공의 위치만 옮깁니다. 시작 배치를 잡을 때 쓰세요.',
       erase: '지울 선을 누르세요.',
     }[S.tool] || '';
@@ -728,6 +852,7 @@
       if (!b) return;
       stopPlay();
       S.sug = null;
+      S.sel = null;
       S.scene = +b.dataset.scene;
       sceneHash(S.scene);
       renderStrategy();
@@ -764,10 +889,11 @@
       if (!b) return;
       S.tool = b.dataset.tool;
       for (const x of document.querySelectorAll('[data-tool]')) x.classList.toggle('on', x === b);
-      $('#toolHint').textContent = toolHint();
-      drawDyn(); // 지우기 모드에서는 선을 누르기 쉽게 그린다
+      S.sel = null;
+      refreshActbar(); // 지우기 모드에서는 선을 누르기 쉽게 그린다
     };
     $('#undoBtn').onclick = undo;
+    bindActbar();
     $('#clearArrows').onclick = () => {
       const sc = S.work.scenes[S.scene];
       if (!sc.arrows.length) return;
@@ -923,6 +1049,7 @@
     const prev = S.undo.pop();
     if (!prev) return;
     S.sug = null;
+    S.sel = null;
     const rev = S.work.rev;
     S.work = JSON.parse(prev);
     S.work.rev = rev; // 서버 기준 버전은 그대로 유지
@@ -947,6 +1074,7 @@
   function addScene() {
     stopPlay();
     S.sug = null;
+    S.sel = null;
     pushUndo();
     const sc = S.work.scenes[S.scene];
     if (S.work.scenes.length >= 30) return toast('장면은 30개까지 만들 수 있습니다.');
@@ -1096,7 +1224,11 @@
     const fill = home ? (gk ? 'var(--home-gk)' : 'var(--home)') : gk ? 'var(--away-gk)' : 'var(--away)';
     const posText = t.pos || '?';
     const fs = posText.length > 2 ? 1.15 : 1.5;
-    const sel = (S.drag && S.drag.key === k) || S.dropKey === k ? ' selected' : '';
+    let sel = (S.drag && S.drag.key === k) || S.dropKey === k || (S.sel && S.sel.key === k) ? ' selected' : '';
+    if (!sel && S.sel && S.sel.action === 'pass' && S.work) {
+      const team = S.sel.key === 'ball' ? (ballHolder(S.work.scenes[S.scene]) || '')[0] : S.sel.key[0];
+      if (!team || k[0] === team) sel = ' cand';
+    }
     return `<g class="token${sel}">
       <circle class="body" cx="${x}" cy="${y}" r="2.1" style="fill:${fill}" stroke="#fff" stroke-width="0.3"/>
       <text x="${x}" y="${y + fs * 0.36}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="#fff">${esc(posText)}</text>
@@ -1389,6 +1521,7 @@
         S.drag = null;
       }
       S.draw = null;
+      S.dest = null;
       const [a, b] = [...touches.values()];
       const v = S.view || FULL;
       const cx = (a.x + b.x) / 2;
@@ -1435,6 +1568,12 @@
       if (S.sug) return toast('추천을 적용(✓)하거나 닫은(✕) 뒤에 편집하세요.');
       const sc = S.work.scenes[S.scene];
       const p = svgPoint(svg, e);
+      if (S.tool === 'flow' && S.sel && S.sel.action) {
+        S.dest = { p };
+        svg.setPointerCapture(e.pointerId);
+        e.preventDefault();
+        return;
+      }
       if (S.tool === 'move' || S.tool === 'flow') {
         // 공은 화면에 그려진 자리로 판정한다
         const bp = ballShown((k) => getPos(sc, k));
@@ -1447,7 +1586,13 @@
           : db < 1.4 || (db < 2.6 && (!pk || db < dist(getPos(sc, pk), p)))
             ? 'ball'
             : pk || (db < 4 ? 'ball' : null);
-        if (!k) return;
+        if (!k) {
+          if (S.sel) {
+            S.sel = null;
+            refreshActbar();
+          }
+          return;
+        }
         S.undo.push(JSON.stringify(S.work));
         const from = k === 'ball' ? bp : getPos(sc, k);
         S.drag = { key: k, moved: false, start: p, off: [from[0] - p[0], from[1] - p[1]], flow: S.tool === 'flow' };
@@ -1519,12 +1664,20 @@
     });
 
     const end = () => {
+      if (S.dest) {
+        const d = S.dest;
+        S.dest = null;
+        if (!pinch && S.sel && S.sel.action) doAction(d.p);
+        return;
+      }
       if (S.drag) {
         if (S.drag.moved && S.drag.flow) {
           const dg = S.drag;
           S.drag = null;
           S.draw = null;
+          S.sel = null;
           finishFlow(dg);
+          refreshActbar();
           return;
         }
         if (S.drag.moved) {
@@ -1536,14 +1689,14 @@
           const k = S.drag.key;
           S.drag = null;
           drawDyn();
-          // 누르기: 이름표를 골라 둔 상태면 배정, 아니면 이름 창
-          if (k === 'ball') return;
+          // 누르기: 이름표를 골라 둔 상태면 배정, 동선 모드면 선수 선택, 배치 모드면 이름 창
           if (S.pick && k[0] === 'h') {
             const pid = S.pick;
             S.pick = null;
             assignPlayer(+k.slice(1), pid);
             renderStrategy();
-          } else openTokenDlg(k);
+          } else if (S.tool === 'flow') selectToken(k);
+          else if (k !== 'ball') openTokenDlg(k);
           return;
         }
         S.drag = null;
