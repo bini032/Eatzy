@@ -904,3 +904,81 @@ label.check input {
 .pitch-wrap.edit {
   max-width: calc((100dvh - 300px) * 74 / 111);
 }
+
+/* 🎯 동작 · 👥 라인 이동 창 (경기장 아래쪽 위에 잠깐 뜸) */
+.hotpop {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
+  z-index: 4;
+  background: rgba(8, 22, 14, 0.95);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 8px;
+}
+.pop-head {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.pop-head b {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pop-row {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 5px;
+}
+.pop-label {
+  width: 38px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.hotpop button {
+  min-height: 34px;
+  padding: 3px 10px;
+  font-size: 13px;
+  border-radius: 17px;
+}
+.hotpop button.on {
+  background: var(--accent);
+  color: #1a1a1a;
+  border-color: var(--accent);
+  font-weight: 700;
+}
+.pop-note {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* 도구 줄 + 동선 바는 헤더 아래에 고정, 경기장은 화면 크기에 맞춰 더 크게 */
+.ctrl {
+  position: sticky;
+  top: var(--hdr, 61px);
+  z-index: 4;
+  background: var(--bg);
+  margin: 0 -16px;
+  padding: 4px 16px 4px;
+  box-shadow: 0 6px 8px -6px rgba(0, 0, 0, 0.7);
+}
+.pitch-wrap.edit {
+  max-width: calc((100dvh - 200px) * 74 / 111);
+}
+.hotpop button {
+  min-height: 32px;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+.pop-label {
+  width: 32px;
+}

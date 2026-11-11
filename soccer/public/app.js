@@ -53,6 +53,8 @@
     pick: null, // 명단에서 눌러 고른 선수 id (동그라미를 누르면 배정)
     sel: null, // 동선 모드에서 선택한 선수 { key, action: null | 'run' | 'dribble' | 'pass' } (기본: 공 가진 선수)
     g: null, // 동선 모드에서 진행 중인 터치·끌기 { p, pk, onBall, path, moved }
+    pop: null, // 경기장 위 동작 창: null | 'route'(동작 프리셋) | 'line'(라인 이동)
+    grp: 'def', // 라인 이동 대상: def | mid | att | all
     dropKey: null, // 명단 이름표를 끄는 동안 받게 될 동그라미
     autoReact: local.get('soccer.autoReact') !== 'off', // "+ 장면" 때 상대 자동 반응
     view: null, // 경기장 확대 상태 { x, y, w, h } (viewBox), null이면 전체
@@ -248,6 +250,8 @@
   // ---------- 그리기 ----------
   function render() {
     if (!S.doc) return;
+    const hdr = $('.top');
+    if (hdr) document.documentElement.style.setProperty('--hdr', hdr.offsetHeight + 'px');
     $('#teamName').textContent = S.doc.team.name || '축구 전술 보드';
     document.title = `${S.doc.team.name || '축구'} 전술 보드`;
     const lock = $('#lockBtn');
@@ -544,7 +548,7 @@
       ${ed ? toolBar() : ''}
       ${ed ? (S.sug ? suggestHtml() : benchHtml(st)) : ''}
 
-      <div class="pitch-wrap${ed ? ' edit' : ''}"><svg id="pitch" class="pitch ${ed ? 'editable' : ''}" viewBox="${viewBoxText()}" xmlns="http://www.w3.org/2000/svg">${fieldSvg()}<g id="dyn"></g></svg>
+      <div class="pitch-wrap${ed ? ' edit' : ''}"><svg id="pitch" class="pitch ${ed ? 'editable' : ''}" viewBox="${viewBoxText()}" xmlns="http://www.w3.org/2000/svg">${fieldSvg()}<g id="dyn"></g></svg>${ed ? '<div id="hotpop" class="hotpop" hidden></div>' : ''}
       </div>
       <div class="legend">
         <span><i class="dot" style="background:var(--home)"></i>우리 팀 (위로 공격)</span>
@@ -574,6 +578,7 @@
     `;
     bindStrategy(st);
     drawDyn();
+    refreshPop();
   }
 
   function sceneMemoText(sc) {
@@ -583,13 +588,13 @@
 
   function toolBar() {
     const toolBtn = (id, label, title) => `<button data-tool="${id}" class="${S.tool === id ? 'on' : ''}" title="${title}">${label}</button>`;
-    return `<div class="tools" id="tools">
+    return `<div class="ctrl"><div class="tools" id="tools">
         ${toolBtn('flow', '👆<small>동선</small>', '터치·끌기로 달리기·드리블·패스·슛')}
         ${toolBtn('move', '✋<small>배치</small>', '동선 없이 위치만 옮기기')}
         ${toolBtn('erase', '🧽<small>지우기</small>', '선 지우기')}
         <button id="undoBtn" title="되돌리기" ${S.undo.length ? '' : 'disabled'}>↶<small>취소</small></button>
       </div>
-      <div class="actbar" id="actbar">${actbarHtml()}</div>`;
+      <div class="actbar" id="actbar">${actbarHtml()}</div></div>`;
   }
 
   // ---------- 동선 모드 (v1.5) ----------
@@ -614,6 +619,7 @@
     const chip = `<span class="ballchip">⚽ ${h0 ? esc(selWho(h0)) : '주인 없는 공'}${tail}</span>`;
     const sel = S.sel;
     if (!sel) return `<div class="act-top">${chip}<span class="ask">움직일 선수를 누르세요</span></div><div class="act"></div>`;
+    const queueHint = sel.queue ? '이어서 터치·끌기 = 경유점 추가' : null;
     const k = sel.key;
     const hold = k === h1;
     const act = sel.action;
@@ -621,10 +627,13 @@
       act === 'pass' ? '받을 선수 터치 · 끌면 곡선 패스'
       : act === 'dribble' ? '갈 곳 터치 · 끌면 곡선 드리블'
       : act === 'run' ? '갈 곳·상대 터치 · 끌면 곡선'
+      : queueHint ? queueHint
       : hold ? '동료=패스 · 빈 곳=드리블 · 끌기=곡선'
       : '빈 곳 터치=달리기 · 끌기=곡선';
     const tog = (a, label) => `<button data-act="${a}" class="${act === a ? 'on' : ''}">${label}</button>`;
     const btns = hold ? [tog('pass', '⚽패스'), '<button data-act="shot">🥅슛</button>', tog('dribble', '🏃드리블')] : [tog('run', '🏃달리기')];
+    btns.push(`<button data-act="queue" class="${sel.queue ? 'on' : ''}" title="이어서 터치하면 동선 뒤에 경유점이 쌓입니다">➕이어서</button>`);
+    btns.push(`<button data-act="pop" class="${S.pop ? 'on' : ''}" title="침투·오버래핑·라인 이동 같은 동작 한 번에">🎯동작</button>`);
     const hasLine = sc.arrows.some((a) => a.owner === k) || ((k === h0 || k === h1) && hasBallAction(sc));
     return `<div class="act-top">${chip}<span class="ask">${hint}</span></div>
       <div class="act"><span class="who">${esc(selWho(k))}</span>${btns.join('')}<button data-act="switch" title="다른 선수 선택">👤변경</button><button data-act="name" title="이름·역할">✏️</button>${
@@ -635,6 +644,7 @@
   function refreshActbar() {
     const bar = $('#actbar');
     if (bar) bar.innerHTML = actbarHtml();
+    refreshPop();
     drawDyn();
   }
 
@@ -671,7 +681,9 @@
         S.sel = null;
         ensureSel();
         changed();
-      } else S.sel.action = S.sel.action === act ? null : act; // 패스·드리블·달리기는 다음 한 번만 적용
+      } else if (act === 'queue') S.sel.queue = !S.sel.queue;
+      else if (act === 'pop') S.pop = S.pop ? null : 'route';
+      else S.sel.action = S.sel.action === act ? null : act; // 패스·드리블·달리기는 다음 한 번만 적용
       refreshActbar();
     };
   }
@@ -859,6 +871,7 @@
     };
     $('#undoBtn').onclick = undo;
     bindActbar();
+    bindPop();
     $('#clearArrows').onclick = () => {
       const sc = S.work.scenes[S.scene];
       if (!sc.arrows.length) return;
@@ -1242,7 +1255,9 @@
         ? { pos: (k) => S.sug.base[k], arrows: idea ? idea.arrows : [], arrowOpacity: 0.95 }
         : { pos: (k) => getPos(sc, k), arrows: sc.arrows, arrowOpacity: 1 });
     const pm = playersById();
-    let html = f.arrows.map((a) => arrowSvg(a, f.arrowOpacity)).join('');
+    // 편집 중에는 이전 장면의 동선을 흐리게 깔아 이어 그리기 쉽게 (양파 껍질 방식)
+    const ghost = !frame && editing() && !S.sug && S.scene > 0 ? st.scenes[S.scene - 1].arrows.map((a) => arrowSvg(a, 0.2)).join('') : '';
+    let html = ghost + f.arrows.map((a) => arrowSvg(a, f.arrowOpacity)).join('');
     if (S.draw && S.draw.points.length > 1) html += arrowSvg({ kind: S.draw.kind, points: S.draw.points }, 0.8);
     const hk = holderOfPos(f.pos);
     // 공 가진 선수가 선택돼 있으면 패스 받을 수 있는 동료에 점선 테두리
@@ -1460,35 +1475,50 @@
     return next;
   }
 
+  // 선수 한 명의 달리기를 새로 넣고(기존 것은 교체), 그 선수에게 가던 패스는 새 도착 지점으로 따라가게 한다
+  function putRun(sc, key, pts) {
+    const oldArrival = arrivalOf(sc, key);
+    sc.arrows = sc.arrows.filter((a) => a.owner !== key);
+    const end = pts[pts.length - 1];
+    sc.arrows.push({ id: rnd(), kind: 'run', owner: key, withBall: false, points: pts.map(roundPt) });
+    for (const a of sc.arrows) if (a.owner === 'ball' && a.kind === 'pass' && dist(a.points[a.points.length - 1], oldArrival) < 1) a.points[a.points.length - 1] = roundPt(end);
+  }
+
   // 동선 하나를 장면에 넣는다. 공 동작(패스·슛·드리블)은 한 장면에 하나라서, 이미 있으면 다음 장면에 이어 그린다.
+  // ➕이어서가 켜져 있으면 같은 선수의 달리기·드리블 끝에 경유점으로 붙인다.
   function commitFlow(key, kind, pts, rcv) {
     let sc = S.work.scenes[S.scene];
     const ballKind = kind !== 'run';
     if (ballKind && key !== holderEnd(sc)) return toast('공을 가진 선수만 패스·슛·드리블을 할 수 있습니다.');
     const lastBall = [...sc.arrows].reverse().find(isBallArrow);
+    const queue = !!(S.sel && S.sel.key === key && S.sel.queue) && (kind === 'run' || kind === 'dribble');
+    const ownLast = [...sc.arrows].reverse().find((a) => a.owner === key && (a.kind === 'run' || a.kind === 'dribble'));
+    const extend = queue && !!ownLast && ownLast.kind === kind;
     // 같은 선수의 드리블을 다시 그리면 교체, 그 밖의 두 번째 공 동작은 다음 장면
     const redo = ballKind && kind === 'dribble' && lastBall && lastBall.kind === 'dribble' && lastBall.owner === key;
-    const needNext = ballKind && hasBallAction(sc) && !redo;
+    const needNext = ballKind && hasBallAction(sc) && !redo && !extend;
     if (needNext && S.work.scenes.length >= 30) return toast('장면은 30개까지 만들 수 있습니다.');
-    if (!needNext && sc.arrows.length >= 60) return toast('한 장면에 선은 60개까지 그릴 수 있습니다.');
+    if (!needNext && !extend && sc.arrows.length >= 60) return toast('한 장면에 선은 60개까지 그릴 수 있습니다.');
     pushUndo();
     if (needNext) sc = newSceneAfter(sc);
-    let oldArrival = null;
-    if (kind === 'run' || kind === 'dribble') {
-      oldArrival = arrivalOf(sc, key);
-      sc.arrows = sc.arrows.filter((a) => a.owner !== key);
-    }
     pts = pts.map((q) => q.slice());
-    pts[0] = (kind === 'pass' || kind === 'shot' ? sc.ball : getPos(sc, key)).slice();
-    const end = pts[pts.length - 1];
-    sc.arrows.push({ id: rnd(), kind, owner: kind === 'pass' || kind === 'shot' ? 'ball' : key, withBall: kind === 'dribble', points: pts.map(roundPt) });
-    // 이 선수에게 가던 패스는 새 도착 지점으로 따라간다
-    if (kind === 'run' && oldArrival) {
-      for (const a of sc.arrows) if (a.owner === 'ball' && a.kind === 'pass' && dist(a.points[a.points.length - 1], oldArrival) < 1) a.points[a.points.length - 1] = roundPt(end);
+    if (extend) {
+      const old = arrivalOf(sc, key);
+      const add = pts.slice(1).map(roundPt);
+      ownLast.points.push(...add);
+      const end = ownLast.points[ownLast.points.length - 1];
+      for (const a of sc.arrows) if (a.owner === 'ball' && a.kind === 'pass' && dist(a.points[a.points.length - 1], old) < 1) a.points[a.points.length - 1] = end;
+    } else if (kind === 'run') {
+      pts[0] = getPos(sc, key).slice();
+      putRun(sc, key, pts);
+    } else {
+      if (kind === 'dribble') sc.arrows = sc.arrows.filter((a) => a.owner !== key);
+      pts[0] = (kind === 'pass' || kind === 'shot' ? sc.ball : getPos(sc, key)).slice();
+      sc.arrows.push({ id: rnd(), kind, owner: kind === 'pass' || kind === 'shot' ? 'ball' : key, withBall: kind === 'dribble', points: pts.map(roundPt) });
     }
-    // 다음 선택: 패스는 받은 선수, 드리블은 그대로, 나머지는 공 가진 선수
-    S.sel = kind === 'pass' && rcv ? { key: rcv, action: null } : kind === 'dribble' ? { key, action: null } : null;
-    const label = { run: '달리기', dribble: '드리블', pass: rcv ? `→ ${selWho(rcv)} 패스` : '빈 공간으로 패스', shot: '슛' }[kind];
+    // 다음 선택: 이어서 모드면 그대로, 패스는 받은 선수, 드리블은 그대로, 나머지는 공 가진 선수
+    S.sel = queue ? { key, action: null, queue: true } : kind === 'pass' && rcv ? { key: rcv, action: null } : kind === 'dribble' ? { key, action: null } : null;
+    const label = { run: extend ? '경유점 추가' : '달리기', dribble: extend ? '경유점 추가' : '드리블', pass: rcv ? `→ ${selWho(rcv)} 패스` : '빈 공간으로 패스', shot: '슛' }[kind];
     toast(`${selWho(key)} ${label}${needNext ? ' · 다음 장면에 이어 그렸어요' : ''}`, 2400);
     changed();
     const undoBtn = $('#undoBtn');
@@ -1496,6 +1526,159 @@
     if (needNext) return renderStrategy();
     ensureSel();
     refreshActbar();
+  }
+
+  // ---------- 🎯 동작 (경로 프리셋) · 👥 라인 이동 ----------
+  const clampP = (q) => [Math.min(66.5, Math.max(1.5, q[0])), Math.min(103.5, Math.max(1.5, q[1]))];
+  const ROUTES = [
+    ['go', '⬆ 침투', 'all'],
+    ['cut', '↗ 안으로 컷인', 'all'],
+    ['over', '↪ 오버래핑', 'off'],
+    ['back', '↩ 내려와 받기', 'off'],
+    ['wide', '↔ 벌려 서기', 'all'],
+    ['press', '🔥 공 압박', 'off'],
+    ['mark', '🤝 상대 마크', 'off'],
+  ];
+
+  // 선수 위치·팀 방향·좌우에 맞춘 경로 (공격 방향: 우리 팀은 위, 상대 팀은 아래)
+  function routeFor(id, sc, key, kind) {
+    const P = flowStart(sc, key, kind);
+    const fy = key[0] === 'h' ? -1 : 1;
+    const sx = P[0] < 34 ? -1 : 1; // 가까운 터치라인 쪽(바깥)
+    let pts = null;
+    if (id === 'go') pts = [P, [P[0], P[1] + fy * 20]];
+    else if (id === 'cut') pts = [P, [P[0] - sx * 10, P[1] + fy * 16]];
+    else if (id === 'over') pts = [P, [P[0] + sx * 6, P[1] + fy * 5], [P[0] + sx * 7, P[1] + fy * 20]];
+    else if (id === 'back') pts = [P, [P[0] - sx * 3, P[1] - fy * 9]];
+    else if (id === 'wide') pts = [P, [P[0] + sx * 14, P[1] + fy * 3]];
+    else if (id === 'press') {
+      const B = ballEnd(sc);
+      const d = dist(P, B);
+      if (d > 3) pts = [P, toward(P, B, d - 2.5)];
+    } else if (id === 'mark') {
+      let best = null;
+      let bd = Infinity;
+      for (const k of KEYS) {
+        if (k === 'ball' || k[0] === key[0]) continue;
+        const dd = dist(arrivalOf(sc, k), P);
+        if (dd < bd) {
+          bd = dd;
+          best = k;
+        }
+      }
+      if (best && bd > 3) pts = [P, toward(P, arrivalOf(sc, best), bd - 2.2)];
+    }
+    if (!pts) return null;
+    pts = pts.map((q, i) => (i ? clampP(q) : q));
+    return pathLength(pts) >= 3 ? pts : null;
+  }
+
+  function doRoute(id) {
+    const sc = S.work.scenes[S.scene];
+    const key = S.sel.key;
+    const kind = key === holderEnd(sc) ? 'dribble' : 'run';
+    const pts = routeFor(id, sc, key, kind);
+    S.pop = null;
+    if (!pts) {
+      refreshPop();
+      return toast('더 갈 공간이 없거나 대상이 너무 가까워요.');
+    }
+    commitFlow(key, kind, pts, null);
+  }
+
+  const LINE_POS = { def: ['CB', 'LB', 'RB', 'LWB', 'RWB'], att: ['LW', 'RW', 'ST'] };
+  const GRP_LABEL = { def: '수비', mid: '미드', att: '공격', all: '전체' };
+  const DIR_LABEL = { fwd: '전진', back: '후퇴', left: '왼쪽', right: '오른쪽', ball: '공 쪽으로' };
+
+  // 라인(수비·미드·공격)에 속한 선수. 골키퍼와 공 가진 선수는 제외
+  function lineKeys(team, grp, sc) {
+    const labels = labelsOf(S.work);
+    const hold = holderEnd(sc);
+    return KEYS.filter((k) => {
+      if (k === 'ball' || k[0] !== team || k === hold) return false;
+      const pos = up(labels[k]);
+      if (pos === 'GK') return false;
+      if (grp === 'all') return true;
+      if (grp === 'def') return LINE_POS.def.includes(pos);
+      if (grp === 'att') return LINE_POS.att.includes(pos);
+      return !LINE_POS.def.includes(pos) && !LINE_POS.att.includes(pos); // 미드
+    });
+  }
+
+  // 라인 전체를 같은 방향으로 한 번에 (대형 유지)
+  function doLine(dir) {
+    const sc = S.work.scenes[S.scene];
+    const team = S.sel ? S.sel.key[0] : 'h';
+    const fy = team === 'h' ? -1 : 1;
+    const B = ballEnd(sc);
+    const moves = [];
+    for (const k of lineKeys(team, S.grp, sc)) {
+      const P = getPos(sc, k);
+      let to;
+      if (dir === 'fwd') to = [P[0], P[1] + fy * 10];
+      else if (dir === 'back') to = [P[0], P[1] - fy * 10];
+      else if (dir === 'left') to = [P[0] - 10, P[1]];
+      else if (dir === 'right') to = [P[0] + 10, P[1]];
+      else {
+        const d = dist(P, B);
+        to = d > 4 ? toward(P, B, Math.min(12, d * 0.4)) : P;
+      }
+      to = clampP(to);
+      if (dist(P, to) >= 2) moves.push([k, P, to]);
+    }
+    if (!moves.length) return toast('움직일 선수가 없거나 더 갈 공간이 없어요.');
+    if (sc.arrows.filter((a) => !moves.some((m) => m[0] === a.owner)).length + moves.length > 60) return toast('한 장면에 선은 60개까지 그릴 수 있습니다.');
+    pushUndo();
+    for (const [k, P, to] of moves) putRun(sc, k, [P, to]);
+    changed();
+    const undoBtn = $('#undoBtn');
+    if (undoBtn) undoBtn.disabled = false;
+    toast(`${team === 'h' ? '우리' : '상대'} ${GRP_LABEL[S.grp]} ${DIR_LABEL[dir]} (${moves.length}명)`, 2200);
+    refreshActbar();
+  }
+
+  function popHtml() {
+    if (!S.pop || !S.sel || !S.work) return '';
+    const sc = S.work.scenes[S.scene];
+    const key = S.sel.key;
+    if (S.pop === 'line') {
+      const grp = (id) => `<button data-hot="grp:${id}" class="${S.grp === id ? 'on' : ''}">${GRP_LABEL[id]}</button>`;
+      const dir = (id, l) => `<button data-hot="dir:${id}" class="primary">${l}</button>`;
+      return `<div class="pop-head"><b>👥 ${key[0] === 'h' ? '우리' : '상대'} 라인 이동</b><button data-hot="route">🎯 동작</button><button data-hot="close" aria-label="닫기">✕</button></div>
+        <div class="pop-row"><span class="pop-label">누가</span>${['def', 'mid', 'att', 'all'].map(grp).join('')}</div>
+        <div class="pop-row"><span class="pop-label">어디로</span>${dir('fwd', '⬆전진')}${dir('back', '⬇후퇴')}${dir('left', '⬅')}${dir('right', '➡')}${dir('ball', '⚽공 쪽')}</div>
+        <p class="pop-note">골키퍼와 공 가진 선수는 빼고, 누르면 바로 적용됩니다 (↶ 취소)</p>`;
+    }
+    const hold = key === holderEnd(sc);
+    const list = ROUTES.filter(([, , who]) => !hold || who === 'all');
+    return `<div class="pop-head"><b>🎯 ${esc(selWho(key))}</b><button data-hot="line">👥 라인</button><button data-hot="close" aria-label="닫기">✕</button></div>
+      <div class="pop-row">${list.map(([id, l]) => `<button data-hot="route:${id}">${l}</button>`).join('')}</div>`;
+  }
+
+  function refreshPop() {
+    const el = $('#hotpop');
+    if (!el) return;
+    if (S.tool !== 'flow' || !S.sel) S.pop = null;
+    const html = popHtml();
+    el.innerHTML = html;
+    el.hidden = !html;
+  }
+
+  function bindPop() {
+    const el = $('#hotpop');
+    if (!el) return;
+    el.onclick = (e) => {
+      const b = e.target.closest('[data-hot]');
+      if (!b || !S.sel) return;
+      const [a, v] = b.dataset.hot.split(':');
+      if (a === 'close') S.pop = null;
+      else if (a === 'line') S.pop = 'line';
+      else if (a === 'route' && !v) S.pop = 'route';
+      else if (a === 'route') return doRoute(v);
+      else if (a === 'grp') S.grp = v;
+      else if (a === 'dir') return doLine(v);
+      refreshActbar();
+    };
   }
 
   // 시작·끝만 정해서 직선 동선 하나
