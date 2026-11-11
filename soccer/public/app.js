@@ -328,22 +328,89 @@
   }
 
   // 새 전술의 라인업: 같은 포메이션의 최근 전술 배정을 이어받고, 없으면 주 포지션이 같은 자리에만 배정
-  function lineupFor(formation, roles = {}) {
-    const recent = [...S.doc.strategies].sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
-    const same = recent.find((x) => x.formation === formation);
-    const base = F.positions(formation, 'home');
-    if (same) {
-      return base.map((d, i) => {
-        const l = same.lineup[i] || {};
-        return { pos: l.pos || d.pos, playerId: l.playerId || null, name: l.name || '', number: l.number ?? null, role: roles[i] || '' };
+  // ---------- 포지션 기준 배정 ----------
+  // 자리 포지션마다 맞는 선수 포지션 (앞일수록 우선). 같은 포지션이 모자라면 다음 포지션으로 채운다
+  const POS_GROUP = {
+    GK: ['GK'],
+    CB: ['CB', 'DM'],
+    LB: ['LB', 'LWB', 'CB'],
+    RB: ['RB', 'RWB', 'CB'],
+    LWB: ['LWB', 'LB', 'LM'],
+    RWB: ['RWB', 'RB', 'RM'],
+    DM: ['DM', 'CM', 'CB'],
+    CM: ['CM', 'DM', 'AM'],
+    AM: ['AM', 'CM', 'LW', 'RW'],
+    LM: ['LM', 'LW', 'LWB', 'CM'],
+    RM: ['RM', 'RW', 'RWB', 'CM'],
+    LW: ['LW', 'LM', 'ST'],
+    RW: ['RW', 'RM', 'ST'],
+    ST: ['ST', 'LW', 'RW', 'AM'],
+  };
+  const up = (v) => String(v || '').trim().toUpperCase();
+  const fitsOf = (slotPos) => POS_GROUP[up(slotPos)] || [up(slotPos)];
+  const byNumber = (list) => [...list].sort((a, b) => (a.number ?? 999) - (b.number ?? 999));
+
+  // 자리 포지션 목록 → 자리별 선수 id. 같은 포지션 자리가 여럿이면 등번호 순으로 앞 자리부터
+  function autoAssign(slotPositions) {
+    const players = byNumber(S.doc.team.players);
+    const used = new Set();
+    const result = slotPositions.map(() => null);
+    for (let level = 0; level < 4; level++) {
+      slotPositions.forEach((pos, i) => {
+        if (result[i]) return;
+        const want = fitsOf(pos)[level];
+        if (!want) return;
+        const p = players.find((x) => !used.has(x.id) && up(x.pos) === want);
+        if (p) {
+          result[i] = p.id;
+          used.add(p.id);
+        }
       });
     }
-    const players = [...S.doc.team.players].sort((a, b) => (a.number ?? 999) - (b.number ?? 999));
-    const used = new Set();
-    return base.map((d, i) => {
-      const p = players.find((x) => !used.has(x.id) && x.pos === d.pos);
-      if (p) used.add(p.id);
-      return { pos: d.pos, playerId: p ? p.id : null, role: roles[i] || '' };
+    return result;
+  }
+
+  // 이 자리에 넣을 만한 다른 선수: 같은 포지션 먼저, 그다음 가장 가까운 포지션 하나까지 (각각 등번호 순)
+  function candidatesFor(st, i) {
+    const fits = fitsOf(st.lineup[i].pos).slice(0, 2);
+    const cur = st.lineup[i].playerId;
+    return byNumber(S.doc.team.players)
+      .filter((p) => p.id !== cur && fits.includes(up(p.pos)))
+      .sort((a, b) => fits.indexOf(up(a.pos)) - fits.indexOf(up(b.pos)))
+      .slice(0, 6);
+  }
+
+  function altChips(st, i, attr) {
+    const list = candidatesFor(st, i);
+    if (!list.length) return '';
+    const slotOf = new Map(st.lineup.map((l, j) => [l.playerId, j]));
+    const exact = up(st.lineup[i].pos);
+    return `<div class="alts">${list
+      .map((p) => {
+        const j = slotOf.get(p.id);
+        const where = j != null ? st.lineup[j].pos : '대기';
+        const same = up(p.pos) === exact;
+        return `<button type="button" ${attr}="${i}" data-pid="${p.id}" class="${same ? 'same' : ''}">${p.number != null ? `<b>${p.number}</b>` : ''}${esc(p.name)}<small>${same ? '' : esc(p.pos) + ' · '}${esc(where)}</small></button>`;
+      })
+      .join('')}</div>`;
+  }
+
+  // 새 전술의 라인업: 선수단의 주 포지션대로 자동 배정
+  function lineupFor(formation, roles = {}) {
+    const base = F.positions(formation, 'home');
+    const ids = autoAssign(base.map((d) => d.pos));
+    return base.map((d, i) => ({ pos: d.pos, playerId: ids[i], role: roles[i] || '' }));
+  }
+
+  // 지금 전술의 자리 포지션대로 다시 배정 (명단 선수가 없는 자리는 직접 적은 이름을 그대로 둔다)
+  function reassignByPosition(st) {
+    const ids = autoAssign(st.lineup.map((l) => l.pos));
+    st.lineup.forEach((l, i) => {
+      if (ids[i]) {
+        l.playerId = ids[i];
+        l.name = '';
+        l.number = null;
+      } else l.playerId = null;
     });
   }
 
@@ -494,7 +561,8 @@
       <h3>전체 전략 메모</h3>
       ${ed ? `<textarea id="stMemo" rows="4" maxlength="3000" placeholder="이 전술의 목표, 핵심 약속 등">${esc(st.memo)}</textarea>` : st.memo ? `<div class="memo-box">${esc(st.memo)}</div>` : '<div class="hint">메모 없음</div>'}
 
-      <h3>라인업 · 역할</h3>
+      <div class="row"><h3 class="grow">라인업 · 역할</h3>${ed && S.doc.team.players.length ? '<button id="reassign">포지션대로 다시 배정</button>' : ''}</div>
+      ${ed && S.doc.team.players.length ? '<p class="hint" style="margin-top:0">이름 옆 버튼은 이 자리 포지션에 맞는 다른 선수입니다. 누르면 바로 바뀌고, 다른 자리에 있던 선수면 서로 맞바꿉니다.</p>' : ''}
       <div class="lineup">${st.lineup.map((l, i) => slotHtml(l, i, ed, pm, st)).join('')}</div>
       ${ed && !S.doc.team.players.length ? '<p class="hint">선수단 탭에서 선수를 등록하면 자리마다 선수를 배정할 수 있습니다.</p>' : ''}
 
@@ -609,7 +677,7 @@
       .map((p) => {
         const i = slotOf.get(p.id);
         const cls = ['chip', i != null ? 'used' : '', S.pick === p.id ? 'picked' : ''].join(' ');
-        return `<span class="${cls}" data-pid="${p.id}">${p.number != null ? `<b>${p.number}</b>` : ''}${esc(p.name)}${i != null ? `<small>${esc(st.lineup[i].pos)}</small>` : ''}</span>`;
+        return `<span class="${cls}" data-pid="${p.id}">${p.number != null ? `<b>${p.number}</b>` : ''}${esc(p.name)}${i != null ? `<small>${esc(st.lineup[i].pos)}</small>` : p.pos ? `<small class="rp">${esc(p.pos)}</small>` : ''}</span>`;
       })
       .join('')}</div>`;
   }
@@ -648,6 +716,7 @@
     return `<div class="slot">
       <div class="pos"><input data-pos="${i}" maxlength="6" value="${esc(l.pos)}" aria-label="포지션" /></div>
       <button type="button" class="who" data-slot="${i}">${who ? `<b>${esc(who)}</b>${t.player ? '' : ' <small>(직접 입력)</small>'}` : '<span class="hint">눌러서 선수 지정</span>'}</button>
+      ${altChips(st, i, 'data-alt')}
       <textarea data-role="${i}" rows="1" maxlength="300" placeholder="역할 메모 (예: 오버래핑 자제, 세트피스 키커)">${esc(l.role)}</textarea>
     </div>`;
   }
@@ -736,9 +805,24 @@
       if (t.dataset.pos != null) drawDyn();
     };
     lineup.onclick = (e) => {
+      const alt = e.target.closest('[data-alt]');
+      if (alt) {
+        assignPlayer(+alt.dataset.alt, alt.dataset.pid);
+        return renderStrategy();
+      }
       const b = e.target.closest('[data-slot]');
       if (b) openTokenDlg('h' + b.dataset.slot);
     };
+    const ra = $('#reassign');
+    if (ra)
+      ra.onclick = () => {
+        if (!confirm('자리 포지션과 선수단의 주 포지션을 맞춰 다시 배정할까요? (같은 포지션이 여럿이면 등번호 순)')) return;
+        pushUndo();
+        reassignByPosition(S.work);
+        changed();
+        renderStrategy();
+        toast('포지션대로 다시 배정했습니다. 마음에 안 들면 ↶ 취소.', 3000);
+      };
     bindBench();
   }
 
@@ -888,7 +972,7 @@
   function applyFormation(side, name) {
     const st = S.work;
     const label = side === 'home' ? '우리 팀' : '상대 팀';
-    if (!confirm(`지금 장면(${S.scene + 1})의 ${label} 위치를 ${name} 기본 위치로 바꿀까요?${side === 'home' ? '\n선수 배정은 자리 순서대로 유지되고 포지션 이름이 바뀝니다.' : ''}`)) {
+    if (!confirm(`지금 장면(${S.scene + 1})의 ${label} 위치를 ${name} 기본 위치로 바꿀까요?${side === 'home' ? '\n포지션 이름이 바뀌고, 선수는 새 포지션에 맞춰 다시 배정됩니다.' : ''}`)) {
       $(side === 'home' ? '#homeF' : '#awayF').value = side === 'home' ? st.formation : st.awayFormation;
       return;
     }
@@ -899,6 +983,7 @@
     if (side === 'home') {
       st.formation = name;
       st.lineup.forEach((l, i) => (l.pos = ps[i].pos));
+      if (S.doc.team.players.length) reassignByPosition(st);
     } else {
       st.awayFormation = name;
       st.awayLineup.forEach((l, i) => (l.pos = ps[i].pos));
@@ -1510,7 +1595,8 @@
           })
           .join('');
       $('#tokRole').value = l.role || '';
-    }
+      $('#tokAlts').innerHTML = altChips(st, i, 'data-talt');
+    } else $('#tokAlts').innerHTML = '';
     $('#tokName').value = l.name || '';
     $('#tokNum').value = l.number ?? '';
     $('#tokPos').value = l.pos;
@@ -1536,6 +1622,14 @@
     syncTokFields();
   };
   $('#tokCancel').onclick = () => tokDlg.close();
+  // 같은 포지션 후보를 누르면 바로 교체
+  $('#tokAlts').onclick = (e) => {
+    const b = e.target.closest('[data-talt]');
+    if (!b) return;
+    assignPlayer(+b.dataset.talt, b.dataset.pid);
+    tokDlg.close();
+    renderStrategy();
+  };
   $('#tokenForm').onsubmit = (e) => {
     e.preventDefault();
     const st = S.work;
@@ -1687,11 +1781,24 @@
   }
 
   // ---------- 선수단 ----------
+  // 포지션별 인원 요약: GK 1 · CB 3 · ST 3 · 미정 2
+  function posSummary(players) {
+    const count = {};
+    for (const p of players) {
+      const k = up(p.pos) || '미정';
+      count[k] = (count[k] || 0) + 1;
+    }
+    const order = [...POSITIONS, '미정'];
+    const rank = (k) => (order.includes(k) ? order.indexOf(k) : order.length - 1); // 모르는 포지션은 미정 앞
+    const keys = Object.keys(count).sort((a, b) => rank(a) - rank(b));
+    return keys.length ? `<div class="pos-sum">${keys.map((k) => `<span><b>${esc(k)}</b> ${count[k]}</span>`).join('')}</div>` : '';
+  }
+
   function renderRoster() {
     const ed = isEditor();
     if (!ed) {
       const players = [...S.doc.team.players].sort((a, b) => (a.number ?? 999) - (b.number ?? 999));
-      view.innerHTML = `<h2>선수단 ${players.length}명</h2>${
+      view.innerHTML = `<h2>선수단 ${players.length}명</h2>${posSummary(players)}${
         players.length
           ? `<div class="players">${players
               .map((p) => `<div class="player view"><span class="num">${p.number ?? ''}</span><b>${esc(p.name)}</b><span class="ppos">${esc(p.pos)}</span></div>`)
@@ -1707,7 +1814,8 @@
       <h2>팀 이름</h2>
       <input id="teamNameInput" maxlength="40" value="${esc(r.name)}" />
       <div class="row"><h2 class="grow">선수단 ${r.players.length}명</h2><button id="addPlayer">+ 선수 추가</button></div>
-      <p class="hint">명단을 먼저 쭉 등록해 두면 전술 화면에서 이름표를 끌어다 동그라미에 놓아 배정합니다.</p>
+      ${posSummary(r.players)}
+      <p class="hint">주 포지션을 적어 두면 새 전술을 만들 때 같은 포지션 자리에 등번호 순으로 자동 배정되고, 라인업에서 같은 포지션 선수로 바로 바꿀 수 있습니다.</p>
       <details class="bulk" ${r.players.length ? '' : 'open'}>
         <summary>📋 한꺼번에 입력</summary>
         <p class="hint">한 줄에 한 명씩 “등번호 이름 포지션” (번호·포지션은 빼도 됨). 쉼표로 나눠도 됩니다. 같은 이름이 이미 있으면 번호·포지션만 바꿉니다.</p>

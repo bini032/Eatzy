@@ -757,3 +757,51 @@ label.check input {
   background: #1f9d6b;
   color: #fff;
 }
+
+/* 같은 포지션 후보 버튼 */
+.alts {
+  grid-column: 2;
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.alts button {
+  flex: none;
+  min-height: 30px;
+  padding: 2px 9px;
+  font-size: 13px;
+  border-radius: 15px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.alts button.same {
+  border-color: var(--home);
+}
+.alts button small {
+  font-size: 11px;
+  color: var(--muted);
+  margin-left: 2px;
+}
+#tokAlts .alts {
+  margin: 4px 0 6px;
+}
+.chip small.rp {
+  opacity: 0.7;
+}
+.pos-sum {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+.pos-sum span {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 2px 8px;
+}
+.pos-sum b {
+  color: var(--accent);
+}
